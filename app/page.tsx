@@ -10,7 +10,7 @@ async function fetchList(searchParams: Record<string,string | string[] | undefin
     if (Array.isArray(v)) v.forEach(x=>qs.append(k, x))
     else qs.set(k, v)
   }
-  const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ''}/api/inzeraty?` + qs.toString(), { next: { revalidate: 60 } })
+  const res = await fetch('/api/inzeraty?' + qs.toString(), { next: { revalidate: 60 } }) // ← relativně
   const data = await res.json()
   return data.items as any[]
 }
