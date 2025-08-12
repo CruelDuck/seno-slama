@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0a0a0a;
+  --fg: #fafafa;
+}
+html, body {
+  height: 100%;
+}
+body {
+  @apply bg-white text-neutral-900;
+}
+.container {
+  @apply max-w-6xl mx-auto px-4;
+}
+.card {
+  @apply rounded-2xl border border-neutral-200 bg-white shadow-sm;
+}
+.btn {
+  @apply inline-flex items-center gap-2 rounded-xl px-4 py-2 font-medium border border-neutral-300 hover:bg-neutral-50;
+}
+.btn-primary {
+  @apply bg-accent text-white border-accent hover:opacity-90;
+}
+.input, .select, .textarea {
+  @apply w-full rounded-xl border border-neutral-300 px-3 py-2;
+}
+.badge {
+  @apply inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium;
+}
+.grid-cards {
+  @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-3;
+}
+.skeleton {
+  @apply animate-pulse bg-neutral-200 rounded;
+}
