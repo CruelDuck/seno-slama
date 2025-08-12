@@ -8,7 +8,7 @@ export default function Filters() {
 
   const setParam = useCallback((key: string, value: string) => {
     const p = new URLSearchParams(params.toString())
-    if (value) p.set(key, value) else p.delete(key)
+    if (value) { p.set(key, value) } else { p.delete(key) }
     if (key !== 'sort') p.delete('page')
     router.push('?' + p.toString())
   }, [params, router])
