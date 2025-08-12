@@ -24,15 +24,15 @@ export default function FormInzerat() {
   const onSubmit = async (values: Values) => {
     const fd = new FormData()
 
-    // ⚠️ Neodesílat prázdné volitelné hodnoty (jinak by validace zbytečně padla)
+    // neposílej prázdné volitelné hodnoty
     for (const [k, v] of Object.entries(values)) {
       if (v === '' || v == null) continue
       fd.append(k, String(v))
     }
 
-    // fotky
     const files = (document.getElementById('fotky') as HTMLInputElement)?.files
     if (files) Array.from(files).slice(0,3).forEach(f=> fd.append('fotky', f))
+
     // honeypot
     fd.append('hp', '')
 
@@ -45,7 +45,6 @@ export default function FormInzerat() {
     const data = await res.json().catch(()=>({} as any))
 
     if (!res.ok) {
-      // Přehraj chybové zprávy zpět do polí (422 z validace)
       if (data?.fieldErrors) {
         Object.entries(data.fieldErrors as Record<string, string[]>).forEach(([name, msgs])=>{
           const msg = msgs?.[0]
