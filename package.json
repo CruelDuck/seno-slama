@@ -1,0 +1,31 @@
+{
+  "name": "seno-slama",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "postinstall": "node -e \"console.log('\u2705 Seno/Sl\u00e1ma deps installed')\""
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "zod": "3.23.8",
+    "react-hook-form": "7.52.1",
+    "@supabase/supabase-js": "2.44.4",
+    "resend": "3.4.0",
+    "@vercel/analytics": "1.3.1",
+    "clsx": "2.1.1"
+  },
+  "devDependencies": {
+    "autoprefixer": "10.4.19",
+    "postcss": "8.4.41",
+    "tailwindcss": "3.4.9",
+    "typescript": "5.5.4",
+    "eslint": "8.57.0",
+    "eslint-config-next": "14.2.5"
+  }
+}
