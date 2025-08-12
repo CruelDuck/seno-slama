@@ -1,4 +1,50 @@
-// …importy a GET beze změny…
+import { NextRequest, NextResponse } from 'next/server'
+import { InzeratSchema } from '@/lib/schema'
+import { supabaseService } from '@/lib/supabaseServer'
+import { sendConfirmEmail } from '@/lib/mail'
+import { sanitizeText, fileKey } from '@/lib/utils'
+
+export const runtime = 'nodejs'
+
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url)
+  const typ = url.searchParams.get('typ')
+  const produkt = url.searchParams.get('produkt')
+  const kraj = url.searchParams.get('kraj')
+  const okres = url.searchParams.get('okres')
+  const rok = url.searchParams.get('rok')
+  const sort = url.searchParams.get('sort') ?? 'newest'
+
+  const sb = supabaseService()
+  let q: any = sb.from('inzeraty').select('*').eq('status', 'Ověřeno')
+  if (typ) q = q.eq('typ_inzeratu', typ)
+  if (produkt) q = q.eq('produkt', produkt)
+  if (kraj) q = q.eq('kraj', kraj)
+  if (okres) q = q.eq('okres', okres)
+  if (rok) q = q.eq('rok_sklizne', rok)
+
+  if (sort === 'cena_asc') q = q.order('cena_za_balik', { ascending: true, nullsFirst: true })
+  else if (sort === 'cena_desc') q = q.order('cena_za_balik', { ascending: false, nullsLast: true })
+  else q = q.order('created_at', { ascending: false })
+
+  const { data, error } = await q.limit(60)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const items = await Promise.all((data||[]).map(async (it: any) => {
+    if (it.fotky?.length) {
+      const signed = []
+      for (const meta of it.fotky) {
+        const p = meta.path || meta.key
+        const { data: u } = await sb.storage.from('inzeraty').createSignedUrl(p, 120)
+        signed.push({ ...meta, signedUrl: u?.signedUrl })
+      }
+      it.fotky = signed
+    }
+    return it
+  }))
+
+  return NextResponse.json({ items })
+}
 
 export async function POST(req: NextRequest) {
   const started = Number(req.headers.get('x-form-started-ms') || 0)
@@ -38,6 +84,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'VALIDATION', fieldErrors: flat.fieldErrors }, { status: 422 })
   }
 
+  // upload fotek
   const files = form.getAll('fotky').filter(Boolean) as File[]
   const maxMb = Number(process.env.UPLOAD_MAX_MB || 2)
   const allowed = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp').split(',')
@@ -48,19 +95,29 @@ export async function POST(req: NextRequest) {
     if (!allowed.includes(f.type)) return NextResponse.json({ error: 'Nepodporovaný formát.' }, { status: 400 })
     const mb = f.size / (1024*1024)
     if (mb > maxMb) return NextResponse.json({ error: 'Soubor je příliš velký.' }, { status: 400 })
-    const key = (await import('@/lib/utils')).fileKey(f.name)
+    const key = fileKey(f.name)
     const { data, error } = await sb.storage.from('inzeraty').upload(key, await f.arrayBuffer(), { contentType: f.type, upsert: false })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     metas.push({ path: data.path, mime: f.type, size: f.size })
   }
 
-  const { data: ins, error: e1 } = await sb.from('inzeraty').insert({ ...parse.data, fotky: metas }).select('id, kontakt_email, nazev').single()
+  // insert inzerátu
+  const { data: ins, error: e1 } = await sb
+    .from('inzeraty')
+    .insert({ ...parse.data, fotky: metas })
+    .select('id, kontakt_email, nazev')
+    .single()
   if (e1 || !ins) return NextResponse.json({ error: e1?.message || 'Insert failed' }, { status: 500 })
 
-  const { data: tok, error: e2 } = await sb.from('confirm_tokens').insert({ inzerat_id: ins.id, email: ins.kontakt_email }).select('token').single()
+  // vytvořit potvrzovací token
+  const { data: tok, error: e2 } = await sb
+    .from('confirm_tokens')
+    .insert({ inzerat_id: ins.id, email: ins.kontakt_email })
+    .select('token')
+    .single()
   if (e2 || !tok) return NextResponse.json({ error: e2?.message || 'Token failed' }, { status: 500 })
 
-  const { sendConfirmEmail } = await import('@/lib/mail')
+  // poslat e-mail (nebo vrátit URL, když není RESEND_API_KEY)
   const res = await sendConfirmEmail(ins.kontakt_email, tok.token, ins.nazev)
   return NextResponse.json({ ok: true, confirmUrl: (res as any).sent ? undefined : (res as any).url })
 }
