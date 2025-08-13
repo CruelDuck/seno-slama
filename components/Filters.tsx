@@ -15,11 +15,15 @@ export default function Filters() {
     startTransition(() => router.replace('?' + p.toString()))
   }, [params, router])
 
+  const resetAll = useCallback(() => {
+    startTransition(() => router.replace('/'))
+  }, [router])
+
   const get = (k: string) => params.get(k) || ''
   const kraj = get('kraj') as keyof typeof OKRESY | ''
   const okresOptions = useMemo(() => kraj ? (OKRESY[kraj] || []) : [], [kraj])
 
-  // lokální stav pro cenu, aplikujeme až onBlur/Enter (žádný lag)
+  // cena: lokální stav
   const [cminLocal, setCminLocal] = useState<string>(get('cmin'))
   const [cmaxLocal, setCmaxLocal] = useState<string>(get('cmax'))
   const applyPrice = useCallback(() => {
@@ -35,6 +39,10 @@ export default function Filters() {
 
   return (
     <div className="card p-4 sticky top-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm text-neutral-600">Filtry</div>
+        <button className="btn" onClick={resetAll} type="button">Vymazat filtry</button>
+      </div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-8 gap-3">
         <select className="select" value={get('typ')} onChange={e=>setParam('typ', e.target.value)}>
           <option value="">Typ: vše</option>
@@ -64,7 +72,7 @@ export default function Filters() {
           {KRAJE.map(k=> <option key={k} value={k}>{k}</option>)}
         </select>
 
-        {/* Okres */}
+        {/* Okres – povolíme až po výběru kraje */}
         <select className="select" value={get('okres')} onChange={e=>setParam('okres', e.target.value)} disabled={!kraj}>
           <option value="">{kraj ? 'Okres: všechny' : 'Vyberte kraj'}</option>
           {okresOptions.map(o=> <option key={o} value={o}>{o}</option>)}
