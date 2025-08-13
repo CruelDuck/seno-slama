@@ -3,7 +3,6 @@ import CardAd, { Ad } from '@/components/CardAd'
 import { headers } from 'next/headers'
 
 export const revalidate = 60
-
 type ListResponse = { items: Ad[]; page: number; pageSize: number; total: number }
 
 async function fetchList(searchParams: Record<string, string | string[] | undefined>): Promise<ListResponse> {
@@ -29,10 +28,8 @@ async function fetchList(searchParams: Record<string, string | string[] | undefi
 export default async function Page({ searchParams }: { searchParams: Record<string, any> }) {
   const { items, page, pageSize, total } = await fetchList(searchParams)
   const maxPage = Math.max(1, Math.ceil((total || 0) / (pageSize || 24)))
-
   const potvrzeno = searchParams?.potvrzeno === '1'
 
-  // QS bez 'page'
   const qsNoPage = new URLSearchParams()
   for (const [k, v] of Object.entries(searchParams)) {
     if (k === 'page' || !v) continue
@@ -42,26 +39,23 @@ export default async function Page({ searchParams }: { searchParams: Record<stri
   const link = (p: number) => `/?${new URLSearchParams([...qsNoPage, ['page', String(p)]])}`
 
   return (
-    <div className="space-y-4">
+    <div className="container-p space-y-4">
       <h1 className="text-2xl font-semibold">Inzeráty</h1>
-
-      {potvrzeno && (
-        <div className="banner-success">✅ Inzerát byl úspěšně potvrzen a zveřejněn.</div>
-      )}
+      {potvrzeno && <div className="banner-success">✅ Inzerát byl úspěšně potvrzen a zveřejněn.</div>}
 
       <Filters />
 
-      <div className="text-sm text-neutral-600">Nalezeno: <b>{total}</b></div>
+      <div className="text-sm text-zinc-600">Nalezeno: <b>{total}</b></div>
 
-      <div className="grid-cards">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {items?.map((ad) => <CardAd key={ad.id} ad={ad} />)}
-        {!items?.length && <div className="text-neutral-600">Zatím žádné inzeráty.</div>}
+        {!items?.length && <div className="text-zinc-600">Zatím žádné inzeráty.</div>}
       </div>
 
       {maxPage > 1 && (
         <div className="flex items-center justify-center gap-2 pt-2">
           <a className={`btn ${page <= 1 ? 'pointer-events-none opacity-50' : ''}`} href={link(page - 1)}>← Předchozí</a>
-          <span className="text-sm text-neutral-600">Strana {page} / {maxPage}</span>
+          <span className="text-sm text-zinc-600">Strana {page} / {maxPage}</span>
           <a className={`btn ${page >= maxPage ? 'pointer-events-none opacity-50' : ''}`} href={link(page + 1)}>Další →</a>
         </div>
       )}
