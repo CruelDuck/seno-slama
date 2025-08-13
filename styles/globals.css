@@ -1,84 +1,37 @@
-/* Reset + systémové fonty */
-* { box-sizing: border-box }
-html, body { margin:0; padding:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color:#0b1324; background:#fff; }
-a { color: inherit; text-decoration: none; }
-img { display:block; max-width:100%; }
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Téma */
+/* Téma – decentní akcenty */
 :root{
-  --accent: #16a34a;         /* zelená */
-  --accent-600:#15803d;
-  --accent-700:#166534;
-  --accent-50:#ecfdf5;
-  --gold:#f59e0b;            /* žlutá pro „Sláma“ */
-  --gold-50:#fffbeb;
-  --muted:#f4f4f5;
-  --border:#e5e7eb;
-  --text:#0b1324;
-  --text-muted:#6b7280;
-  --danger:#ef4444;
+  --accent: #16a34a;      /* zelená */
+  --accent-600: #15803d;
+  --accent-700: #166534;
+  --amber-500: #f59e0b;
+  --amber-600: #d97706;
+  --ring: 0 0 #0000;
 }
 
-.container { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
-
-/* Karty / mřížka */
-.card { background:#fff; border:1px solid var(--border); border-radius:16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
-.grid-cards { display:grid; grid-template-columns: repeat(1,minmax(0,1fr)); gap:16px; }
-@media (min-width:640px){ .grid-cards{ grid-template-columns: repeat(2,minmax(0,1fr)); } }
-@media (min-width:1024px){ .grid-cards{ grid-template-columns: repeat(3,minmax(0,1fr)); } }
-
-/* Vstupy */
-.input, .select, .textarea{
-  width:100%; border:1px solid var(--border); border-radius:10px; padding:10px 12px; background:#fff;
-}
-.input:focus, .select:focus, .textarea:focus{ outline:3px solid var(--accent-50); border-color: var(--accent); }
-
-/* Tlačítka – přístupné, žádné „zmizení“ na hover */
-.btn{
-  display:inline-flex; align-items:center; justify-content:center; gap:8px;
-  border:1px solid var(--border); border-radius:9999px; padding:9px 14px; background:#fff; color:var(--text);
-  transition: transform .02s ease, background .15s ease, color .15s ease, border-color .15s ease;
-}
-.btn:hover{ background:#f9fafb; }
-.btn:active{ transform: translateY(1px); }
-
-.btn-primary{
-  background: var(--accent); color:#fff; border-color: var(--accent-600);
-}
-.btn-primary:hover{ background: var(--accent-600); color:#fff; border-color: var(--accent-700); }
-.btn-primary:active{ background: var(--accent-700); }
-
-.badge{
-  display:inline-block; padding:3px 8px; border-radius:9999px; background:#eef2ff; color:#312e81; font-size:12px;
+/* Kontejner */
+@layer components {
+  .container-p { @apply max-w-6xl mx-auto px-4; }
+  .card { @apply rounded-2xl border border-zinc-200 bg-white shadow-sm; }
+  .badge { @apply inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700; }
+  .btn { @apply inline-flex items-center justify-center rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-50 active:translate-y-px; }
+  .btn-primary { @apply border-transparent bg-[var(--accent)] text-white hover:bg-[var(--accent-600)] active:bg-[var(--accent-700)]; }
+  .input { @apply w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none ring-2 ring-transparent focus:ring-[color:var(--accent)/.25]; }
+  .select { @apply w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none ring-2 ring-transparent focus:ring-[color:var(--accent)/.25]; }
+  .textarea { @apply w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none ring-2 ring-transparent focus:ring-[color:var(--accent)/.25]; }
+  .label { @apply mb-1 block text-xs font-medium text-zinc-600; }
+  .section-title { @apply mb-2 text-sm font-semibold text-zinc-800; }
 }
 
-/* Utility */
-.sticky{ position:sticky }
-.top-4{ top:1rem }
-.p-4{ padding:1rem } .p-3{ padding:.75rem }
-.mt-10{ margin-top:2.5rem } .mb-2{ margin-bottom:.5rem }
-.space-y-2 > * + *{ margin-top:.5rem } .space-y-3 > * + *{ margin-top:.75rem } .space-y-4 > * + *{ margin-top:1rem }
-.text-sm{ font-size: .875rem } .text-xs{ font-size:.75rem }
-.text-neutral-500{ color: var(--text-muted) } .text-neutral-600{ color:#4b5563 }
-.font-semibold{ font-weight:600 } .text-2xl{ font-size:1.5rem }
-.border{ border:1px solid var(--border) } .border-b{ border-bottom:1px solid var(--border) }
+/* Rámeček karet podle typu */
+.card-offer { @apply ring-1 ring-green-300; }
+.card-demand { @apply ring-1 ring-amber-300; }
 
-/* Banner úspěchu */
-.banner-success{
-  background: var(--accent-50);
-  border: 1px solid var(--accent);
-  color: var(--accent-700);
-  border-radius: 12px;
-  padding: 10px 12px;
-}
+/* Placeholder obrázek */
+.placeholder { @apply flex h-full w-full items-center justify-center bg-zinc-100 text-zinc-400; }
 
-/* Rámečky podle typu */
-.card-offer{ border-color: #86efac }      /* Nabídka */
-.card-demand{ border-color: #fde68a }     /* Poptávka */
-
-/* Placeholder plochy */
-.placeholder{
-  position:relative; width:100%; height:100%;
-  display:flex; align-items:center; justify-content:center;
-  color:#9ca3af; background: var(--muted);
-}
+/* Banner */
+.banner-success { @apply rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800; }
