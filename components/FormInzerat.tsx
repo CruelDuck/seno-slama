@@ -19,10 +19,7 @@ export default function FormInzerat() {
   const kraj = watch('kraj') as keyof typeof OKRESY | ''
   const okresOptions = useMemo(() => kraj ? (OKRESY[kraj] || []) : [], [kraj])
 
-  // Když se změní kraj, smaž okres
-  useEffect(() => {
-    setValue('okres', '')
-  }, [kraj, setValue])
+  useEffect(() => { setValue('okres', '') }, [kraj, setValue])
 
   const onSubmit = async (values: Values) => {
     const fd = new FormData()
@@ -34,11 +31,7 @@ export default function FormInzerat() {
     if (files) Array.from(files).slice(0,3).forEach(f=> fd.append('fotky', f))
     fd.append('hp', '')
 
-    const res = await fetch('/api/inzeraty', {
-      method: 'POST',
-      body: fd,
-      headers: { 'x-form-started-ms': String(startedAt) }
-    })
+    const res = await fetch('/api/inzeraty', { method: 'POST', body: fd, headers: { 'x-form-started-ms': String(startedAt) } })
     const data = await res.json().catch(()=>({} as any))
 
     if (!res.ok) {
@@ -83,30 +76,18 @@ export default function FormInzerat() {
       </div>
 
       <div className="grid sm:grid-cols-3 gap-3">
-        {/* Kraj */}
-        <Controller
-          control={control}
-          name="kraj"
-          render={({ field }) => (
-            <select className="select" {...field}>
-              <option value="">– Vyberte kraj –</option>
-              {KRAJE.map(k=> <option key={k} value={k}>{k}</option>)}
-            </select>
-          )}
-        />
-
-        {/* Okres (závisí na kraji) */}
-        <Controller
-          control={control}
-          name="okres"
-          render={({ field }) => (
-            <select className="select" {...field} disabled={!kraj}>
-              <option value="">{kraj ? '– Vyberte okres –' : 'Vyberte kraj nejprve'}</option>
-              {okresOptions.map(o=> <option key={o} value={o}>{o}</option>)}
-            </select>
-          )}
-        />
-
+        <Controller control={control} name="kraj" render={({ field }) => (
+          <select className="select" {...field}>
+            <option value="">– Vyberte kraj –</option>
+            {KRAJE.map(k=> <option key={k} value={k}>{k}</option>)}
+          </select>
+        )} />
+        <Controller control={control} name="okres" render={({ field }) => (
+          <select className="select" {...field} disabled={!kraj}>
+            <option value="">{kraj ? '– Vyberte okres –' : 'Vyberte kraj nejprve'}</option>
+            {okresOptions.map(o=> <option key={o} value={o}>{o}</option>)}
+          </select>
+        )} />
         <input className="input" placeholder="Seč (např. 1., 2.)" {...register('sec')} />
       </div>
       {(errors.kraj || errors.okres || errors.sec) && (
@@ -117,24 +98,14 @@ export default function FormInzerat() {
 
       <div className="grid sm:grid-cols-3 gap-3">
         <input type="number" className="input" placeholder="Množství (ks)" {...register('mnozstvi_baliky', { valueAsNumber: true })} />
-        {/* Rok sklizně jen 2022–2025 */}
-        <Controller
-          control={control}
-          name="rok_sklizne"
-          render={({ field }) => (
-            <select className="select" {...field}>
-              <option value="">– Rok sklizně –</option>
-              {ROKY_SKLIZNE.map(r=> <option key={r} value={r}>{r}</option>)}
-            </select>
-          )}
-        />
+        <Controller control={control} name="rok_sklizne" render={({ field }) => (
+          <select className="select" {...field}>
+            <option value="">– Rok sklizně –</option>
+            {ROKY_SKLIZNE.map(r=> <option key={r} value={r}>{r}</option>)}
+          </select>
+        )} />
         <input type="number" className="input" placeholder="Cena za balík (Kč) – volitelné" {...register('cena_za_balik', { valueAsNumber: true })} />
       </div>
-      {(errors.mnozstvi_baliky || errors.rok_sklizne || errors.cena_za_balik) && (
-        <p className="text-red-600 text-xs">
-          {(errors.mnozstvi_baliky?.message as any) || (errors.rok_sklizne?.message as any) || (errors.cena_za_balik?.message as any)}
-        </p>
-      )}
 
       <textarea className="textarea" rows={5} placeholder="Popis (volitelné)" {...register('popis')}></textarea>
 
@@ -143,11 +114,6 @@ export default function FormInzerat() {
         <input className="input" placeholder="Kontakt – Telefon" {...register('kontakt_telefon')} />
         <input type="email" className="input" placeholder="Kontakt – E-mail" {...register('kontakt_email')} />
       </div>
-      {(errors.kontakt_jmeno || errors.kontakt_telefon || errors.kontakt_email) && (
-        <p className="text-red-600 text-xs">
-          {(errors.kontakt_jmeno?.message as any) || (errors.kontakt_telefon?.message as any) || (errors.kontakt_email?.message as any)}
-        </p>
-      )}
 
       <div>
         <label className="block text-sm font-medium mb-1">Fotky (0–3, max 2 MB, JPG/PNG/WebP)</label>
