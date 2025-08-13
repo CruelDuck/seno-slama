@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await q.limit(60)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const items = await Promise.all((data||[]).map(async (it: any) => {
+  const items = await Promise.all((data || []).map(async (it: any) => {
     if (it.fotky?.length) {
       const signed = []
       for (const meta of it.fotky) {
@@ -84,16 +84,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'VALIDATION', fieldErrors: flat.fieldErrors }, { status: 422 })
   }
 
-  // upload fotek
   const files = form.getAll('fotky').filter(Boolean) as File[]
   const maxMb = Number(process.env.UPLOAD_MAX_MB || 2)
   const allowed = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp').split(',')
   const metas: any[] = []
 
   const sb = supabaseService()
-  for (const f of files.slice(0,3)) {
+  for (const f of files.slice(0, 3)) {
     if (!allowed.includes(f.type)) return NextResponse.json({ error: 'Nepodporovaný formát.' }, { status: 400 })
-    const mb = f.size / (1024*1024)
+    const mb = f.size / (1024 * 1024)
     if (mb > maxMb) return NextResponse.json({ error: 'Soubor je příliš velký.' }, { status: 400 })
     const key = fileKey(f.name)
     const { data, error } = await sb.storage.from('inzeraty').upload(key, await f.arrayBuffer(), { contentType: f.type, upsert: false })
@@ -101,7 +100,6 @@ export async function POST(req: NextRequest) {
     metas.push({ path: data.path, mime: f.type, size: f.size })
   }
 
-  // insert inzerátu
   const { data: ins, error: e1 } = await sb
     .from('inzeraty')
     .insert({ ...parse.data, fotky: metas })
@@ -109,7 +107,6 @@ export async function POST(req: NextRequest) {
     .single()
   if (e1 || !ins) return NextResponse.json({ error: e1?.message || 'Insert failed' }, { status: 500 })
 
-  // vytvořit potvrzovací token
   const { data: tok, error: e2 } = await sb
     .from('confirm_tokens')
     .insert({ inzerat_id: ins.id, email: ins.kontakt_email })
@@ -117,7 +114,12 @@ export async function POST(req: NextRequest) {
     .single()
   if (e2 || !tok) return NextResponse.json({ error: e2?.message || 'Token failed' }, { status: 500 })
 
-  // poslat e-mail (nebo vrátit URL, když není RESEND_API_KEY)
-  const res = await sendConfirmEmail(ins.kontakt_email, tok.token, ins.nazev)
-  return NextResponse.json({ ok: true, confirmUrl: (res as any).sent ? undefined : (res as any).url })
+  const mail = await sendConfirmEmail(ins.kontakt_email, tok.token, ins.nazev)
+
+  return NextResponse.json({
+    ok: true,
+    emailSent: mail.sent,
+    emailError: mail.error,
+    confirmUrl: mail.sent ? undefined : mail.url
+  })
 }
