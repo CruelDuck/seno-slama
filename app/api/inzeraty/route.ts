@@ -9,7 +9,6 @@ export const runtime = 'nodejs'
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
 
-  // Filtry
   const typ = url.searchParams.get('typ')
   const produkt = url.searchParams.get('produkt')
   const kraj = url.searchParams.get('kraj')
@@ -19,7 +18,6 @@ export async function GET(req: NextRequest) {
   const cmax = url.searchParams.get('cmax')
   const sort = url.searchParams.get('sort') ?? 'newest'
 
-  // Paginace
   const page = Math.max(1, Number(url.searchParams.get('page') || '1'))
   const pageSize = Math.min(60, Math.max(1, Number(url.searchParams.get('pageSize') || '24')))
   const from = (page - 1) * pageSize
@@ -35,7 +33,8 @@ export async function GET(req: NextRequest) {
   if (typ) q = q.eq('typ_inzeratu', typ)
   if (produkt) q = q.eq('produkt', produkt)
   if (kraj) q = q.eq('kraj', kraj)
-  if (okres) q = q.eq('okres', okres)
+  // Okres: pokud je vybraný, chceme „okres = vybraný OR okres IS NULL“
+  if (okres) q = q.or(`okres.eq.${okres},okres.is.null`)
   if (rok) q = q.eq('rok_sklizne', rok)
   if (cmin && !Number.isNaN(Number(cmin))) q = q.gte('cena_za_balik', Number(cmin))
   if (cmax && !Number.isNaN(Number(cmax))) q = q.lte('cena_za_balik', Number(cmax))
@@ -47,7 +46,6 @@ export async function GET(req: NextRequest) {
   const { data, error, count } = await q.range(from, to)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // podepsat obrázky
   const items = await Promise.all((data ?? []).map(async (it: any) => {
     if (Array.isArray(it.fotky) && it.fotky.length) {
       const signed: any[] = []
@@ -120,7 +118,6 @@ export async function POST(req: NextRequest) {
     metas.push({ path: up.path, mime: f.type, size: f.size })
   }
 
-  // Insert inzerátu
   const { data: ins, error: e1 } = await sb
     .from('inzeraty')
     .insert({ ...parse.data, fotky: metas })
@@ -128,7 +125,6 @@ export async function POST(req: NextRequest) {
     .single()
   if (e1 || !ins) return NextResponse.json({ error: e1?.message || 'Insert failed' }, { status: 500 })
 
-  // Token potvrzení
   const { data: tok, error: e2 } = await sb
     .from('confirm_tokens')
     .insert({ inzerat_id: ins.id, email: ins.kontakt_email })
@@ -136,7 +132,6 @@ export async function POST(req: NextRequest) {
     .single()
   if (e2 || !tok) return NextResponse.json({ error: e2?.message || 'Token failed' }, { status: 500 })
 
-  // E-mail
   const mail = await sendConfirmEmail(ins.kontakt_email, tok.token, ins.nazev)
 
   return NextResponse.json({
