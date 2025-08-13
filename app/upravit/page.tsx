@@ -12,10 +12,8 @@ type Item = {
 }
 
 export default function Page() {
-  const [token, setToken] = useState<string>('')
-  const [sent, setSent] = useState<boolean>(false)
-  const [item, setItem] = useState<Item | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [token, setToken] = useState<string>(''); const [sent, setSent] = useState<boolean>(false)
+  const [item, setItem] = useState<Item | null>(null); const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search)
@@ -24,9 +22,7 @@ export default function Page() {
     setToken(t); setSent(s)
     if (!t) { setLoading(false); return }
     fetch('/api/inzeraty/edit?token=' + encodeURIComponent(t))
-      .then(r=>r.json())
-      .then(d=> { if (d?.item) setItem(d.item) })
-      .finally(()=> setLoading(false))
+      .then(r=>r.json()).then(d=> { if (d?.item) setItem(d.item) }).finally(()=> setLoading(false))
   }, [])
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -40,23 +36,37 @@ export default function Page() {
     location.href = '/'
   }
 
+  async function extend() {
+    if (!token) return
+    const r = await fetch('/api/inzeraty/edit/extend?token=' + encodeURIComponent(token), { method: 'POST' })
+    if (r.ok) { alert('Platnost prodloužena o 30 dní.'); location.href='/' }
+    else alert('Nepodařilo se prodloužit.')
+  }
+
+  async function del() {
+    if (!token) return
+    if (!confirm('Opravdu smazat inzerát?')) return
+    const r = await fetch('/api/inzeraty/edit/delete?token=' + encodeURIComponent(token), { method: 'POST' })
+    if (r.ok) { alert('Inzerát smazán.'); location.href='/' }
+    else alert('Nepodařilo se smazat.')
+  }
+
   if (sent && !token) {
     return (
-      <div className="container py-6 space-y-3">
+      <div className="container-p py-6 space-y-3">
         <div className="banner-success">✉️ Odkaz pro úpravu byl odeslán na váš e-mail.</div>
         <a href="/" className="btn">Zpět na hlavní stránku</a>
       </div>
     )
   }
-
-  if (loading) return <div className="container py-6">Načítám…</div>
-  if (!token) return <div className="container py-6">Chybí token.</div>
-  if (!item) return <div className="container py-6">Token je neplatný nebo vypršel.</div>
+  if (loading) return <div className="container-p py-6">Načítám…</div>
+  if (!token) return <div className="container-p py-6">Chybí token.</div>
+  if (!item) return <div className="container-p py-6">Token je neplatný nebo vypršel.</div>
 
   return (
-    <div className="container py-6 space-y-4">
+    <div className="container-p py-6 space-y-4">
       <h1 className="text-2xl font-semibold">Upravit inzerát</h1>
-      <div className="text-neutral-600">{item.nazev}</div>
+      <div className="text-zinc-600">{item.nazev}</div>
       <form onSubmit={onSubmit} className="card p-4 space-y-3">
         <div className="grid sm:grid-cols-3 gap-3">
           <label className="block">
@@ -70,8 +80,7 @@ export default function Page() {
           <label className="block">
             <div className="text-sm mb-1">Rok sklizně</div>
             <select name="rok_sklizne" defaultValue={item.rok_sklizne ?? ''} className="select">
-              <option value="">—</option>
-              <option>2022</option><option>2023</option><option>2024</option><option>2025</option>
+              <option value="">—</option><option>2022</option><option>2023</option><option>2024</option><option>2025</option>
             </select>
           </label>
         </div>
@@ -83,7 +92,11 @@ export default function Page() {
           <div className="text-sm mb-1">Kontakt – Telefon</div>
           <input name="kontakt_telefon" defaultValue={item.kontakt_telefon} className="input" />
         </label>
-        <button className="btn btn-primary" type="submit">Uložit změny</button>
+        <div className="flex gap-2">
+          <button className="btn btn-primary" type="submit">Uložit změny</button>
+          <button className="btn" type="button" onClick={extend}>Prodloužit o 30 dní</button>
+          <button className="btn" type="button" onClick={del}>Smazat inzerát</button>
+        </div>
       </form>
     </div>
   )
