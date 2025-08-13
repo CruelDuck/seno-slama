@@ -1,10 +1,13 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from 'recharts'
 
 export default function AdminClient() {
   const [key, setKey] = useState<string>(''); const [authed, setAuthed] = useState(false)
   const [metrics, setMetrics] = useState<any>(null); const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const [days, setDays] = useState(30)
+  const [stats, setStats] = useState<any>(null)
 
   useEffect(()=>{ const k = localStorage.getItem('admin_key') || ''; setKey(k); if (k) setAuthed(true) }, [])
 
@@ -15,9 +18,12 @@ export default function AdminClient() {
       const m = await fetch('/api/admin/metrics', { headers: { 'x-admin-key': key } }).then(r=>r.json()).catch(()=>null)
       setMetrics(m)
       const list = await fetch('/api/admin/inzeraty/list', { headers: { 'x-admin-key': key } }).then(r=>r.json()).catch(()=>({ items: [] }))
-      setItems(list.items || []); setLoading(false)
+      setItems(list.items || [])
+      const st = await fetch(`/api/admin/stats?days=${days}`, { headers: { 'x-admin-key': key } }).then(r=>r.json()).catch(()=>null)
+      setStats(st)
+      setLoading(false)
     })()
-  }, [authed, key])
+  }, [authed, key, days])
 
   function login(e: React.FormEvent){ e.preventDefault(); localStorage.setItem('admin_key', key); setAuthed(true) }
 
@@ -36,7 +42,7 @@ export default function AdminClient() {
 
   if (!authed) {
     return (
-      <div className="container py-6 max-w-md">
+      <div className="container-p py-6 max-w-md">
         <h1 className="text-2xl font-semibold mb-2">Admin</h1>
         <form onSubmit={login} className="space-y-3 card p-4">
           <input className="input" placeholder="PIN" value={key} onChange={e=>setKey(e.target.value)} />
@@ -46,8 +52,17 @@ export default function AdminClient() {
     )
   }
 
+  const barData = useMemo(()=> {
+    if (!stats?.byKraj) return []
+    return Object.entries(stats.byKraj).map(([name, value]) => ({ name, value }))
+  }, [stats])
+  const lineData = useMemo(()=> {
+    if (!stats?.trend) return []
+    return Object.entries(stats.trend).sort(([a],[b])=>a.localeCompare(b)).map(([name, value]) => ({ name, value }))
+  }, [stats])
+
   return (
-    <div className="container py-6 space-y-4">
+    <div className="container-p py-6 space-y-4">
       <div className="flex items-center gap-2">
         <h1 className="text-2xl font-semibold">Admin přehled</h1>
         <button className="btn" onClick={()=>{ localStorage.removeItem('admin_key'); location.reload() }}>Odhlásit</button>
@@ -58,12 +73,51 @@ export default function AdminClient() {
 
       {metrics && (
         <div className="grid sm:grid-cols-4 gap-3">
-          <div className="card p-3"><div className="text-sm text-neutral-600">Celkem</div><div className="text-2xl font-semibold">{metrics.total}</div></div>
-          <div className="card p-3"><div className="text-sm text-neutral-600">Ověřené</div><div className="text-2xl font-semibold">{metrics.verified}</div></div>
-          <div className="card p-3"><div className="text-sm text-neutral-600">Archiv</div><div className="text-2xl font-semibold">{metrics.archived}</div></div>
-          <div className="card p-3"><div className="text-sm text-neutral-600">Nové (7 dní)</div><div className="text-2xl font-semibold">{metrics.last7}</div></div>
+          <div className="card p-3"><div className="text-sm text-zinc-600">Celkem</div><div className="text-2xl font-semibold">{metrics.total}</div></div>
+          <div className="card p-3"><div className="text-sm text-zinc-600">Ověřené</div><div className="text-2xl font-semibold">{metrics.verified}</div></div>
+          <div className="card p-3"><div className="text-sm text-zinc-600">Archiv</div><div className="text-2xl font-semibold">{metrics.archived}</div></div>
+          <div className="card p-3"><div className="text-sm text-zinc-600">Nové (7 dní)</div><div className="text-2xl font-semibold">{metrics.last7}</div></div>
         </div>
       )}
+
+      {/* Grafy */}
+      <div className="card p-4 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="font-semibold">Statistiky</div>
+          <select className="select w-40" value={days} onChange={e=>setDays(Number(e.target.value))}>
+            <option value={7}>7 dní</option>
+            <option value={30}>30 dní</option>
+            <option value={90}>90 dní</option>
+          </select>
+          {stats && <div className="text-sm text-zinc-600 ml-auto">
+            Průměr: {stats.mean ?? '—'} Kč • Medián: {stats.median ?? '—'} Kč (jen Nabídky)
+          </div>}
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={barData}>
+                <XAxis dataKey="name" hide />
+                <YAxis hide />
+                <Tooltip />
+                <Bar dataKey="value" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={lineData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Line type="monotone" dataKey="value" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
 
       <div className="card p-4">
         <div className="font-semibold mb-2">Inzeráty</div>
@@ -97,7 +151,7 @@ export default function AdminClient() {
                   </td>
                 </tr>
               ))}
-              {!items.length && <tr><td colSpan={7} className="py-4 text-neutral-500">Žádná data</td></tr>}
+              {!items.length && <tr><td colSpan={7} className="py-4 text-zinc-500">Žádná data</td></tr>}
             </tbody>
           </table>
         </div>
