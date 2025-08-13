@@ -1,14 +1,9 @@
 'use client'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { InzeratSchema } from '@/lib/schema'
-import { useState, useEffect } from 'react'
-
-const KRAJE = [
-  'Hlavní město Praha','Středočeský','Jihočeský','Plzeňský','Karlovarský','Ústecký',
-  'Liberecký','Královéhradecký','Pardubický','Vysočina','Jihomoravský',
-  'Olomoucký','Zlínský','Moravskoslezský'
-]
+import { useEffect, useMemo, useState } from 'react'
+import { KRAJE, OKRESY, ROKY_SKLIZNE } from '@/lib/cz'
 
 type Values = any
 
@@ -16,10 +11,18 @@ export default function FormInzerat() {
   const [startedAt, setStartedAt] = useState<number>(0)
   useEffect(()=>{ setStartedAt(Date.now()) }, [])
 
-  const { register, handleSubmit, setError, formState: { errors, isSubmitting }, reset } = useForm<Values>({
+  const { register, handleSubmit, setError, formState: { errors, isSubmitting }, reset, control, watch, setValue } = useForm<Values>({
     resolver: zodResolver(InzeratSchema as any),
-    defaultValues: { typ_inzeratu: 'Nabídka', produkt: 'Seno' }
+    defaultValues: { typ_inzeratu: 'Nabídka', produkt: 'Seno', kraj: '' }
   })
+
+  const kraj = watch('kraj') as keyof typeof OKRESY | ''
+  const okresOptions = useMemo(() => kraj ? (OKRESY[kraj] || []) : [], [kraj])
+
+  // Když se změní kraj, smaž okres
+  useEffect(() => {
+    setValue('okres', '')
+  }, [kraj, setValue])
 
   const onSubmit = async (values: Values) => {
     const fd = new FormData()
@@ -51,16 +54,15 @@ export default function FormInzerat() {
       return
     }
 
-if (data?.emailSent === false && data?.confirmUrl) {
-  const err = data.emailError
-  const errMsg = typeof err === 'string' ? err : JSON.stringify(err)
-  alert('E-mail se nepodařilo odeslat (' + errMsg + '). Potvrďte prosím odkaz: ' + data.confirmUrl)
-} else if (data?.confirmUrl) {
-  alert('E-mail není nastaven – potvrďte přes: ' + data.confirmUrl)
-} else {
-  alert('Hotovo! Zkontrolujte e-mail a potvrďte zveřejnění.')
-}
-
+    if (data?.emailSent === false && data?.confirmUrl) {
+      const err = data.emailError
+      const errMsg = typeof err === 'string' ? err : JSON.stringify(err)
+      alert('E-mail se nepodařilo odeslat (' + errMsg + '). Potvrďte prosím odkaz: ' + data.confirmUrl)
+    } else if (data?.confirmUrl) {
+      alert('E-mail není nastaven – potvrďte přes: ' + data.confirmUrl)
+    } else {
+      alert('Hotovo! Zkontrolujte e-mail a potvrďte zveřejnění.')
+    }
     reset()
   }
 
@@ -81,19 +83,58 @@ if (data?.emailSent === false && data?.confirmUrl) {
       </div>
 
       <div className="grid sm:grid-cols-3 gap-3">
-        <select className="select" {...register('kraj')}>
-          <option value="">– Vyberte kraj –</option>
-          {KRAJE.map(k=> <option key={k} value={k}>{k}</option>)}
-        </select>
-        <input className="input" placeholder="Okres (volitelné)" {...register('okres')} />
+        {/* Kraj */}
+        <Controller
+          control={control}
+          name="kraj"
+          render={({ field }) => (
+            <select className="select" {...field}>
+              <option value="">– Vyberte kraj –</option>
+              {KRAJE.map(k=> <option key={k} value={k}>{k}</option>)}
+            </select>
+          )}
+        />
+
+        {/* Okres (závisí na kraji) */}
+        <Controller
+          control={control}
+          name="okres"
+          render={({ field }) => (
+            <select className="select" {...field} disabled={!kraj}>
+              <option value="">{kraj ? '– Vyberte okres –' : 'Vyberte kraj nejprve'}</option>
+              {okresOptions.map(o=> <option key={o} value={o}>{o}</option>)}
+            </select>
+          )}
+        />
+
         <input className="input" placeholder="Seč (např. 1., 2.)" {...register('sec')} />
       </div>
+      {(errors.kraj || errors.okres || errors.sec) && (
+        <p className="text-red-600 text-xs">
+          {(errors.kraj?.message as any) || (errors.okres?.message as any) || (errors.sec?.message as any)}
+        </p>
+      )}
 
       <div className="grid sm:grid-cols-3 gap-3">
         <input type="number" className="input" placeholder="Množství (ks)" {...register('mnozstvi_baliky', { valueAsNumber: true })} />
-        <input className="input" placeholder="Rok sklizně (např. 2024/25)" {...register('rok_sklizne')} />
+        {/* Rok sklizně jen 2022–2025 */}
+        <Controller
+          control={control}
+          name="rok_sklizne"
+          render={({ field }) => (
+            <select className="select" {...field}>
+              <option value="">– Rok sklizně –</option>
+              {ROKY_SKLIZNE.map(r=> <option key={r} value={r}>{r}</option>)}
+            </select>
+          )}
+        />
         <input type="number" className="input" placeholder="Cena za balík (Kč) – volitelné" {...register('cena_za_balik', { valueAsNumber: true })} />
       </div>
+      {(errors.mnozstvi_baliky || errors.rok_sklizne || errors.cena_za_balik) && (
+        <p className="text-red-600 text-xs">
+          {(errors.mnozstvi_baliky?.message as any) || (errors.rok_sklizne?.message as any) || (errors.cena_za_balik?.message as any)}
+        </p>
+      )}
 
       <textarea className="textarea" rows={5} placeholder="Popis (volitelné)" {...register('popis')}></textarea>
 
@@ -102,6 +143,11 @@ if (data?.emailSent === false && data?.confirmUrl) {
         <input className="input" placeholder="Kontakt – Telefon" {...register('kontakt_telefon')} />
         <input type="email" className="input" placeholder="Kontakt – E-mail" {...register('kontakt_email')} />
       </div>
+      {(errors.kontakt_jmeno || errors.kontakt_telefon || errors.kontakt_email) && (
+        <p className="text-red-600 text-xs">
+          {(errors.kontakt_jmeno?.message as any) || (errors.kontakt_telefon?.message as any) || (errors.kontakt_email?.message as any)}
+        </p>
+      )}
 
       <div>
         <label className="block text-sm font-medium mb-1">Fotky (0–3, max 2 MB, JPG/PNG/WebP)</label>
