@@ -1,6 +1,7 @@
 import Filters from '@/components/Filters'
 import CardAd, { Ad } from '@/components/CardAd'
 import { headers } from 'next/headers'
+import LostEmail from '@/components/LostEmail'
 
 export const revalidate = 60
 type ListResponse = { items: Ad[]; page: number; pageSize: number; total: number }
@@ -59,6 +60,9 @@ export default async function Page({ searchParams }: { searchParams: Record<stri
           <a className={`btn ${page >= maxPage ? 'pointer-events-none opacity-50' : ''}`} href={link(page + 1)}>Další →</a>
         </div>
       )}
+
+      {/* Info blok – do budoucna můžeme nahradit veřejnou variantou resend */}
+      <LostEmail />
     </div>
   )
 }
