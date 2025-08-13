@@ -4,38 +4,23 @@ import { headers } from 'next/headers'
 
 export const revalidate = 60
 
-type ListResponse = {
-  items: Ad[]
-  page: number
-  pageSize: number
-  total: number
-}
+type ListResponse = { items: Ad[]; page: number; pageSize: number; total: number }
 
 async function fetchList(searchParams: Record<string, string | string[] | undefined>): Promise<ListResponse> {
-  // postavit QS
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(searchParams)) {
     if (!v) continue
     if (Array.isArray(v)) v.forEach(x => qs.append(k, x))
     else qs.set(k, v)
   }
-
-  // absolutní URL z hlaviček (fallback na env)
   const h = headers()
   const host = h.get('x-forwarded-host') ?? h.get('host')
   const proto = h.get('x-forwarded-proto') ?? 'https'
   const base = host ? `${proto}://${host}` : (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000')
-
   try {
     const res = await fetch(`${base}/api/inzeraty?${qs.toString()}`, { next: { revalidate: 60 } })
     if (!res.ok) return { items: [], page: 1, pageSize: 24, total: 0 }
-    const data = await res.json()
-    return {
-      items: data.items ?? [],
-      page: Number(data.page ?? 1),
-      pageSize: Number(data.pageSize ?? 24),
-      total: Number(data.total ?? 0),
-    }
+    return await res.json()
   } catch {
     return { items: [], page: 1, pageSize: 24, total: 0 }
   }
@@ -45,7 +30,9 @@ export default async function Page({ searchParams }: { searchParams: Record<stri
   const { items, page, pageSize, total } = await fetchList(searchParams)
   const maxPage = Math.max(1, Math.ceil((total || 0) / (pageSize || 24)))
 
-  // připravit QS bez 'page' pro odkazy
+  const potvrzeno = searchParams?.potvrzeno === '1'
+
+  // QS bez 'page'
   const qsNoPage = new URLSearchParams()
   for (const [k, v] of Object.entries(searchParams)) {
     if (k === 'page' || !v) continue
@@ -57,7 +44,14 @@ export default async function Page({ searchParams }: { searchParams: Record<stri
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Inzeráty</h1>
+
+      {potvrzeno && (
+        <div className="banner-success">✅ Inzerát byl úspěšně potvrzen a zveřejněn.</div>
+      )}
+
       <Filters />
+
+      <div className="text-sm text-neutral-600">Nalezeno: <b>{total}</b></div>
 
       <div className="grid-cards">
         {items?.map((ad) => <CardAd key={ad.id} ad={ad} />)}
