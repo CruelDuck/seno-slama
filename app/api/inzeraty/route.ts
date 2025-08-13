@@ -15,6 +15,8 @@ export async function GET(req: NextRequest) {
   const kraj = url.searchParams.get('kraj')
   const okres = url.searchParams.get('okres')
   const rok = url.searchParams.get('rok')
+  const cmin = url.searchParams.get('cmin')
+  const cmax = url.searchParams.get('cmax')
   const sort = url.searchParams.get('sort') ?? 'newest'
 
   // Paginace
@@ -35,19 +37,17 @@ export async function GET(req: NextRequest) {
   if (kraj) q = q.eq('kraj', kraj)
   if (okres) q = q.eq('okres', okres)
   if (rok) q = q.eq('rok_sklizne', rok)
+  if (cmin && !Number.isNaN(Number(cmin))) q = q.gte('cena_za_balik', Number(cmin))
+  if (cmax && !Number.isNaN(Number(cmax))) q = q.lte('cena_za_balik', Number(cmax))
 
-  if (sort === 'cena_asc') {
-    q = q.order('cena_za_balik', { ascending: true, nullsFirst: true })
-  } else if (sort === 'cena_desc') {
-    q = q.order('cena_za_balik', { ascending: false, nullsFirst: false })
-  } else {
-    q = q.order('created_at', { ascending: false })
-  }
+  if (sort === 'cena_asc') q = q.order('cena_za_balik', { ascending: true, nullsFirst: true })
+  else if (sort === 'cena_desc') q = q.order('cena_za_balik', { ascending: false, nullsFirst: false })
+  else q = q.order('created_at', { ascending: false })
 
   const { data, error, count } = await q.range(from, to)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Podepsat URL fotek
+  // podepsat obrázky
   const items = await Promise.all((data ?? []).map(async (it: any) => {
     if (Array.isArray(it.fotky) && it.fotky.length) {
       const signed: any[] = []
@@ -62,12 +62,7 @@ export async function GET(req: NextRequest) {
     return it
   }))
 
-  return NextResponse.json({
-    items,
-    page,
-    pageSize,
-    total: count ?? 0,
-  })
+  return NextResponse.json({ items, page, pageSize, total: count ?? 0 })
 }
 
 export async function POST(req: NextRequest) {
@@ -77,11 +72,7 @@ export async function POST(req: NextRequest) {
   }
 
   const form = await req.formData()
-
-  // Honeypot – když je vyplněn, tiše OK
-  if ((form.get('hp') as string) || (form.get('website') as string)) {
-    return NextResponse.json({ ok: true })
-  }
+  if ((form.get('hp') as string) || (form.get('website') as string)) return NextResponse.json({ ok: true })
 
   const getStr = (k: string) => {
     const v = form.get(k)
@@ -112,7 +103,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'VALIDATION', fieldErrors: flat.fieldErrors }, { status: 422 })
   }
 
-  // Upload fotek (0–3)
+  // Upload fotek 0–3
   const files = form.getAll('fotky').filter(Boolean) as File[]
   const maxMb = Number(process.env.UPLOAD_MAX_MB || 2)
   const allowed = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp').split(',')
@@ -124,9 +115,7 @@ export async function POST(req: NextRequest) {
     const mb = f.size / (1024 * 1024)
     if (mb > maxMb) return NextResponse.json({ error: 'Soubor je příliš velký.' }, { status: 400 })
     const key = fileKey((f as any).name || 'upload.bin')
-    const { data: up, error: upErr } = await sb.storage
-      .from('inzeraty')
-      .upload(key, await f.arrayBuffer(), { contentType: f.type, upsert: false })
+    const { data: up, error: upErr } = await sb.storage.from('inzeraty').upload(key, await f.arrayBuffer(), { contentType: f.type, upsert: false })
     if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
     metas.push({ path: up.path, mime: f.type, size: f.size })
   }
@@ -139,7 +128,7 @@ export async function POST(req: NextRequest) {
     .single()
   if (e1 || !ins) return NextResponse.json({ error: e1?.message || 'Insert failed' }, { status: 500 })
 
-  // Token pro potvrzení
+  // Token potvrzení
   const { data: tok, error: e2 } = await sb
     .from('confirm_tokens')
     .insert({ inzerat_id: ins.id, email: ins.kontakt_email })
@@ -147,16 +136,13 @@ export async function POST(req: NextRequest) {
     .single()
   if (e2 || !tok) return NextResponse.json({ error: e2?.message || 'Token failed' }, { status: 500 })
 
-  // Odeslat e-mail (nebo vrátit URL, pokud e-mail nejde)
+  // E-mail
   const mail = await sendConfirmEmail(ins.kontakt_email, tok.token, ins.nazev)
 
   return NextResponse.json({
     ok: true,
     emailSent: mail.sent,
-    emailError:
-      typeof mail.error === 'string'
-        ? mail.error
-        : (mail.error ? JSON.stringify(mail.error) : undefined),
+    emailError: typeof mail.error === 'string' ? mail.error : (mail.error ? JSON.stringify(mail.error) : undefined),
     confirmUrl: mail.sent ? undefined : mail.url,
   })
 }
