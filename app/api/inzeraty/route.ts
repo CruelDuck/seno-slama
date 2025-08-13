@@ -8,6 +8,8 @@ export const runtime = 'nodejs'
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
+
+  // Filtry
   const typ = url.searchParams.get('typ')
   const produkt = url.searchParams.get('produkt')
   const kraj = url.searchParams.get('kraj')
@@ -15,10 +17,16 @@ export async function GET(req: NextRequest) {
   const rok = url.searchParams.get('rok')
   const sort = url.searchParams.get('sort') ?? 'newest'
 
+  // Paginace
+  const page = Math.max(1, Number(url.searchParams.get('page') || '1'))
+  const pageSize = Math.min(60, Math.max(1, Number(url.searchParams.get('pageSize') || '24')))
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
   const sb = supabaseService()
-  let q = sb
+  let q: any = sb
     .from('inzeraty')
-    .select('*')
+    .select('*', { count: 'exact' })
     .eq('status', 'Ověřeno')
     .gt('expires_at', new Date().toISOString())
 
@@ -31,15 +39,15 @@ export async function GET(req: NextRequest) {
   if (sort === 'cena_asc') {
     q = q.order('cena_za_balik', { ascending: true, nullsFirst: true })
   } else if (sort === 'cena_desc') {
-    // ❗️nullsLast neexistuje – použijeme nullsFirst: false
     q = q.order('cena_za_balik', { ascending: false, nullsFirst: false })
   } else {
     q = q.order('created_at', { ascending: false })
   }
 
-  const { data, error } = await q.limit(60)
+  const { data, error, count } = await q.range(from, to)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Podepsat URL fotek
   const items = await Promise.all((data ?? []).map(async (it: any) => {
     if (Array.isArray(it.fotky) && it.fotky.length) {
       const signed: any[] = []
@@ -54,7 +62,12 @@ export async function GET(req: NextRequest) {
     return it
   }))
 
-  return NextResponse.json({ items })
+  return NextResponse.json({
+    items,
+    page,
+    pageSize,
+    total: count ?? 0,
+  })
 }
 
 export async function POST(req: NextRequest) {
@@ -64,7 +77,8 @@ export async function POST(req: NextRequest) {
   }
 
   const form = await req.formData()
-  // honeypot – když je vyplněn, skončíme tiše jako OK
+
+  // Honeypot – když je vyplněn, tiše OK
   if ((form.get('hp') as string) || (form.get('website') as string)) {
     return NextResponse.json({ ok: true })
   }
@@ -125,7 +139,7 @@ export async function POST(req: NextRequest) {
     .single()
   if (e1 || !ins) return NextResponse.json({ error: e1?.message || 'Insert failed' }, { status: 500 })
 
-  // Vytvořit potvrzovací token
+  // Token pro potvrzení
   const { data: tok, error: e2 } = await sb
     .from('confirm_tokens')
     .insert({ inzerat_id: ins.id, email: ins.kontakt_email })
