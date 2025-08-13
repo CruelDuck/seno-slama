@@ -51,13 +51,16 @@ export default function FormInzerat() {
       return
     }
 
-    if (data?.emailSent === false && data?.confirmUrl) {
-      alert('E-mail se nepodařilo odeslat (' + (data.emailError || 'neznámá chyba') + '). Potvrďte prosím odkaz: ' + data.confirmUrl)
-    } else if (data?.confirmUrl) {
-      alert('E-mail není nastaven – potvrďte přes: ' + data.confirmUrl)
-    } else {
-      alert('Hotovo! Zkontrolujte e-mail a potvrďte zveřejnění.')
-    }
+if (data?.emailSent === false && data?.confirmUrl) {
+  const err = data.emailError
+  const errMsg = typeof err === 'string' ? err : JSON.stringify(err)
+  alert('E-mail se nepodařilo odeslat (' + errMsg + '). Potvrďte prosím odkaz: ' + data.confirmUrl)
+} else if (data?.confirmUrl) {
+  alert('E-mail není nastaven – potvrďte přes: ' + data.confirmUrl)
+} else {
+  alert('Hotovo! Zkontrolujte e-mail a potvrďte zveřejnění.')
+}
+
     reset()
   }
 
