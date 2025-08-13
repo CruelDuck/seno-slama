@@ -1,6 +1,7 @@
 import '../styles/globals.css'
 import type { Metadata } from 'next'
 import { Analytics } from '@vercel/analytics/react'
+import Logo from '@/components/Logo'
 
 export const metadata: Metadata = {
   title: 'Seno/Sláma – Katalog',
@@ -14,9 +15,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <header className="border-b">
           <div className="container flex items-center justify-between h-14">
-            <a href="/" className="font-semibold">Seno/Sláma</a>
+            <a href="/" className="flex items-center gap-2"><Logo /></a>
             <nav className="flex items-center gap-2">
-              <a className="btn" href="/pridat">Přidat inzerát</a>
+              <a className="btn" href="/">Katalog</a>
+              <a className="btn btn-primary" href="/pridat">Přidat inzerát</a>
               <a className="btn" href="/admin">Admin</a>
             </nav>
           </div>
