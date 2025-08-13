@@ -23,17 +23,12 @@ export default function FormInzerat() {
 
   const onSubmit = async (values: Values) => {
     const fd = new FormData()
-
-    // neposílej prázdné volitelné hodnoty
     for (const [k, v] of Object.entries(values)) {
       if (v === '' || v == null) continue
       fd.append(k, String(v))
     }
-
     const files = (document.getElementById('fotky') as HTMLInputElement)?.files
     if (files) Array.from(files).slice(0,3).forEach(f=> fd.append('fotky', f))
-
-    // honeypot
     fd.append('hp', '')
 
     const res = await fetch('/api/inzeraty', {
@@ -41,7 +36,6 @@ export default function FormInzerat() {
       body: fd,
       headers: { 'x-form-started-ms': String(startedAt) }
     })
-
     const data = await res.json().catch(()=>({} as any))
 
     if (!res.ok) {
@@ -57,8 +51,10 @@ export default function FormInzerat() {
       return
     }
 
-    if (data?.confirmUrl) {
-      alert('E-mail zatím není nastaven. Potvrďte prosím zveřejnění přes tento odkaz: ' + data.confirmUrl)
+    if (data?.emailSent === false && data?.confirmUrl) {
+      alert('E-mail se nepodařilo odeslat (' + (data.emailError || 'neznámá chyba') + '). Potvrďte prosím odkaz: ' + data.confirmUrl)
+    } else if (data?.confirmUrl) {
+      alert('E-mail není nastaven – potvrďte přes: ' + data.confirmUrl)
     } else {
       alert('Hotovo! Zkontrolujte e-mail a potvrďte zveřejnění.')
     }
@@ -89,22 +85,12 @@ export default function FormInzerat() {
         <input className="input" placeholder="Okres (volitelné)" {...register('okres')} />
         <input className="input" placeholder="Seč (např. 1., 2.)" {...register('sec')} />
       </div>
-      {(errors.kraj || errors.okres || errors.sec) && (
-        <p className="text-red-600 text-xs">
-          {(errors.kraj?.message as any) || (errors.okres?.message as any) || (errors.sec?.message as any)}
-        </p>
-      )}
 
       <div className="grid sm:grid-cols-3 gap-3">
         <input type="number" className="input" placeholder="Množství (ks)" {...register('mnozstvi_baliky', { valueAsNumber: true })} />
         <input className="input" placeholder="Rok sklizně (např. 2024/25)" {...register('rok_sklizne')} />
         <input type="number" className="input" placeholder="Cena za balík (Kč) – volitelné" {...register('cena_za_balik', { valueAsNumber: true })} />
       </div>
-      {(errors.mnozstvi_baliky || errors.rok_sklizne || errors.cena_za_balik) && (
-        <p className="text-red-600 text-xs">
-          {(errors.mnozstvi_baliky?.message as any) || (errors.rok_sklizne?.message as any) || (errors.cena_za_balik?.message as any)}
-        </p>
-      )}
 
       <textarea className="textarea" rows={5} placeholder="Popis (volitelné)" {...register('popis')}></textarea>
 
@@ -113,11 +99,6 @@ export default function FormInzerat() {
         <input className="input" placeholder="Kontakt – Telefon" {...register('kontakt_telefon')} />
         <input type="email" className="input" placeholder="Kontakt – E-mail" {...register('kontakt_email')} />
       </div>
-      {(errors.kontakt_jmeno || errors.kontakt_telefon || errors.kontakt_email) && (
-        <p className="text-red-600 text-xs">
-          {(errors.kontakt_jmeno?.message as any) || (errors.kontakt_telefon?.message as any) || (errors.kontakt_email?.message as any)}
-        </p>
-      )}
 
       <div>
         <label className="block text-sm font-medium mb-1">Fotky (0–3, max 2 MB, JPG/PNG/WebP)</label>
