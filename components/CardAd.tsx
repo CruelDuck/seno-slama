@@ -21,7 +21,7 @@ export default function CardAd({ ad }: { ad: Ad }) {
     : '—'
   const badge = ad.typ_inzeratu === 'Nabídka' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
   return (
-    <a className="card block overflow-hidden group" href={`#${ad.id}`}>
+    <a className="card block overflow-hidden group" href={`/inzerat/${ad.id}`}>
       <div className="relative aspect-[16/9] bg-neutral-100">
         {first?.signedUrl ? (
           <Image src={first.signedUrl} alt={ad.nazev} fill className="object-cover" sizes="(max-width:768px) 100vw, 33vw" />
