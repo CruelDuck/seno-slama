@@ -1,6 +1,6 @@
 'use client'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useMemo, useTransition } from 'react'
+import { useCallback, useMemo, useState, useTransition } from 'react'
 import { KRAJE, OKRESY, ROKY_SKLIZNE } from '@/lib/cz'
 
 export default function Filters() {
@@ -12,22 +12,30 @@ export default function Filters() {
     const p = new URLSearchParams(params.toString())
     if (value) { p.set(key, value) } else { p.delete(key) }
     if (key !== 'sort') p.delete('page')
-    startTransition(() => {
-      router.replace('?' + p.toString())
-    })
+    startTransition(() => router.replace('?' + p.toString()))
   }, [params, router])
 
   const get = (k: string) => params.get(k) || ''
   const kraj = get('kraj') as keyof typeof OKRESY | ''
+  const okresOptions = useMemo(() => kraj ? (OKRESY[kraj] || []) : [], [kraj])
 
-  const okresOptions = useMemo(() => {
-    if (!kraj) return []
-    return OKRESY[kraj] || []
-  }, [kraj])
+  // lokální stav pro cenu, aplikujeme až onBlur/Enter (žádný lag)
+  const [cminLocal, setCminLocal] = useState<string>(get('cmin'))
+  const [cmaxLocal, setCmaxLocal] = useState<string>(get('cmax'))
+  const applyPrice = useCallback(() => {
+    const p = new URLSearchParams(params.toString())
+    if (cminLocal) p.set('cmin', cminLocal); else p.delete('cmin')
+    if (cmaxLocal) p.set('cmax', cmaxLocal); else p.delete('cmax')
+    p.delete('page')
+    startTransition(()=> router.replace('?' + p.toString()))
+  }, [cminLocal, cmaxLocal, params, router])
+  const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.currentTarget.blur(); applyPrice() }
+  }
 
   return (
     <div className="card p-4 sticky top-4">
-      <div className="grid sm:grid-cols-2 lg:grid-cols-6 gap-3">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-8 gap-3">
         <select className="select" value={get('typ')} onChange={e=>setParam('typ', e.target.value)}>
           <option value="">Typ: vše</option>
           <option>Nabídka</option>
@@ -45,7 +53,6 @@ export default function Filters() {
           className="select"
           value={kraj}
           onChange={(e)=>{
-            // při změně kraje smaž okres
             const p = new URLSearchParams(params.toString())
             const v = e.target.value
             if (v) { p.set('kraj', v) } else { p.delete('kraj') }
@@ -57,13 +64,8 @@ export default function Filters() {
           {KRAJE.map(k=> <option key={k} value={k}>{k}</option>)}
         </select>
 
-        {/* Okres závislý na kraji */}
-        <select
-          className="select"
-          value={get('okres')}
-          onChange={e=>setParam('okres', e.target.value)}
-          disabled={!kraj}
-        >
+        {/* Okres */}
+        <select className="select" value={get('okres')} onChange={e=>setParam('okres', e.target.value)} disabled={!kraj}>
           <option value="">{kraj ? 'Okres: všechny' : 'Vyberte kraj'}</option>
           {okresOptions.map(o=> <option key={o} value={o}>{o}</option>)}
         </select>
@@ -73,6 +75,10 @@ export default function Filters() {
           <option value="">Rok sklizně: všechny</option>
           {ROKY_SKLIZNE.map(r=> <option key={r} value={r}>{r}</option>)}
         </select>
+
+        {/* Cena min/max */}
+        <input className="input" inputMode="numeric" pattern="[0-9]*" placeholder="Cena min" value={cminLocal} onChange={e=>setCminLocal(e.target.value)} onBlur={applyPrice} onKeyDown={onKey} />
+        <input className="input" inputMode="numeric" pattern="[0-9]*" placeholder="Cena max" value={cmaxLocal} onChange={e=>setCmaxLocal(e.target.value)} onBlur={applyPrice} onKeyDown={onKey} />
 
         <select className="select" value={get('sort') || 'newest'} onChange={e=>setParam('sort', e.target.value)}>
           <option value="newest">Řazení: Nejnovější</option>
