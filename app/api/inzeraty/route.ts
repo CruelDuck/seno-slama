@@ -43,8 +43,12 @@ export async function GET(req: NextRequest) {
     return it
   }))
 
-  return NextResponse.json({ items })
-}
+return NextResponse.json({
+  ok: true,
+  emailSent: mail.sent,
+  emailError: typeof mail.error === 'string' ? mail.error : (mail.error ? JSON.stringify(mail.error) : undefined),
+  confirmUrl: mail.sent ? undefined : mail.url
+})
 
 export async function POST(req: NextRequest) {
   const started = Number(req.headers.get('x-form-started-ms') || 0)
