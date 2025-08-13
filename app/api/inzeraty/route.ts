@@ -28,14 +28,17 @@ export async function GET(req: NextRequest) {
   if (okres) q = q.eq('okres', okres)
   if (rok) q = q.eq('rok_sklizne', rok)
 
-  if (sort === 'cena_asc') q = q.order('cena_za_balik', { ascending: true, nullsFirst: true })
-  else if (sort === 'cena_desc') q = q.order('cena_za_balik', { ascending: false, nullsLast: true })
-  else q = q.order('created_at', { ascending: false })
+  if (sort === 'cena_asc') {
+    q = q.order('cena_za_balik', { ascending: true, nullsFirst: true })
+  } else if (sort === 'cena_desc') {
+    // ❗️nullsLast neexistuje – použijeme nullsFirst: false
+    q = q.order('cena_za_balik', { ascending: false, nullsFirst: false })
+  } else {
+    q = q.order('created_at', { ascending: false })
+  }
 
   const { data, error } = await q.limit(60)
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const items = await Promise.all((data ?? []).map(async (it: any) => {
     if (Array.isArray(it.fotky) && it.fotky.length) {
@@ -61,8 +64,7 @@ export async function POST(req: NextRequest) {
   }
 
   const form = await req.formData()
-
-  // honeypot – když je vyplněn, jen tiše skončíme jako OK
+  // honeypot – když je vyplněn, skončíme tiše jako OK
   if ((form.get('hp') as string) || (form.get('website') as string)) {
     return NextResponse.json({ ok: true })
   }
@@ -104,20 +106,14 @@ export async function POST(req: NextRequest) {
 
   const sb = supabaseService()
   for (const f of files.slice(0, 3)) {
-    if (!allowed.includes(f.type)) {
-      return NextResponse.json({ error: 'Nepodporovaný formát.' }, { status: 400 })
-    }
+    if (!allowed.includes(f.type)) return NextResponse.json({ error: 'Nepodporovaný formát.' }, { status: 400 })
     const mb = f.size / (1024 * 1024)
-    if (mb > maxMb) {
-      return NextResponse.json({ error: 'Soubor je příliš velký.' }, { status: 400 })
-    }
+    if (mb > maxMb) return NextResponse.json({ error: 'Soubor je příliš velký.' }, { status: 400 })
     const key = fileKey((f as any).name || 'upload.bin')
     const { data: up, error: upErr } = await sb.storage
       .from('inzeraty')
       .upload(key, await f.arrayBuffer(), { contentType: f.type, upsert: false })
-    if (upErr) {
-      return NextResponse.json({ error: upErr.message }, { status: 500 })
-    }
+    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
     metas.push({ path: up.path, mime: f.type, size: f.size })
   }
 
@@ -127,19 +123,15 @@ export async function POST(req: NextRequest) {
     .insert({ ...parse.data, fotky: metas })
     .select('id, kontakt_email, nazev')
     .single()
-  if (e1 || !ins) {
-    return NextResponse.json({ error: e1?.message || 'Insert failed' }, { status: 500 })
-  }
+  if (e1 || !ins) return NextResponse.json({ error: e1?.message || 'Insert failed' }, { status: 500 })
 
-  // Token pro potvrzení
+  // Vytvořit potvrzovací token
   const { data: tok, error: e2 } = await sb
     .from('confirm_tokens')
     .insert({ inzerat_id: ins.id, email: ins.kontakt_email })
     .select('token')
     .single()
-  if (e2 || !tok) {
-    return NextResponse.json({ error: e2?.message || 'Token failed' }, { status: 500 })
-  }
+  if (e2 || !tok) return NextResponse.json({ error: e2?.message || 'Token failed' }, { status: 500 })
 
   // Odeslat e-mail (nebo vrátit URL, pokud e-mail nejde)
   const mail = await sendConfirmEmail(ins.kontakt_email, tok.token, ins.nazev)
