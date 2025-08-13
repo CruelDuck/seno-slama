@@ -2,61 +2,36 @@
 import { useEffect, useState } from 'react'
 
 export default function AdminClient() {
-  const [key, setKey] = useState<string>('')
-  const [authed, setAuthed] = useState(false)
-  const [metrics, setMetrics] = useState<any>(null)
-  const [items, setItems] = useState<any[]>([])
+  const [key, setKey] = useState<string>(''); const [authed, setAuthed] = useState(false)
+  const [metrics, setMetrics] = useState<any>(null); const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    const k = localStorage.getItem('admin_key') || ''
-    setKey(k)
-    if (k) setAuthed(true)
-  }, [])
+  useEffect(()=>{ const k = localStorage.getItem('admin_key') || ''; setKey(k); if (k) setAuthed(true) }, [])
 
   useEffect(() => {
     if (!authed) return
     ;(async () => {
       setLoading(true)
-      const m = await fetch('/api/admin/metrics', { headers: { 'x-admin-key': key } })
-        .then(r=>r.json()).catch(()=>null)
+      const m = await fetch('/api/admin/metrics', { headers: { 'x-admin-key': key } }).then(r=>r.json()).catch(()=>null)
       setMetrics(m)
-      const list = await fetch('/api/admin/inzeraty/list', { headers: { 'x-admin-key': key } })
-        .then(r=>r.json()).catch(()=>({ items: [] }))
-      setItems(list.items || [])
-      setLoading(false)
+      const list = await fetch('/api/admin/inzeraty/list', { headers: { 'x-admin-key': key } }).then(r=>r.json()).catch(()=>({ items: [] }))
+      setItems(list.items || []); setLoading(false)
     })()
   }, [authed, key])
 
-  function login(e: React.FormEvent) {
-    e.preventDefault()
-    localStorage.setItem('admin_key', key)
-    setAuthed(true)
-  }
+  function login(e: React.FormEvent){ e.preventDefault(); localStorage.setItem('admin_key', key); setAuthed(true) }
 
   async function act(id: string, action: 'archive'|'restore') {
-    const res = await fetch(`/api/admin/inzeraty/${id}/${action}`, {
-      method: 'POST',
-      headers: { 'x-admin-key': key }
-    })
-    if (res.ok) {
-      setItems(items => items.map(it => it.id === id ? {
-        ...it, status: action === 'archive' ? 'Archivováno' : 'Ověřeno'
-      } : it))
-    } else {
-      alert('Akce selhala')
-    }
+    const res = await fetch(`/api/admin/inzeraty/${id}/${action}`, { method:'POST', headers:{ 'x-admin-key': key } })
+    if (res.ok) setItems(items => items.map(it => it.id === id ? { ...it, status: action==='archive' ? 'Archivováno' : 'Ověřeno' } : it))
+    else alert('Akce selhala')
   }
 
-  async function exportContacts() {
-    const res = await fetch('/api/admin/contacts/export', { headers: { 'x-admin-key': key } })
-    const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'kontakty.csv'
-    a.click()
-    URL.revokeObjectURL(url)
+  async function resend(id: string) {
+    const r = await fetch(`/api/inzeraty/resend?id=${id}`, { method:'POST', headers:{ 'x-admin-key': key } })
+    const j = await r.json().catch(()=>({}))
+    if (!r.ok) { alert('Resend selhal'); return }
+    alert(j?.emailSent ? 'E-mail odeslán.' : 'E-mail neodeslán.')
   }
 
   if (!authed) {
@@ -76,7 +51,7 @@ export default function AdminClient() {
       <div className="flex items-center gap-2">
         <h1 className="text-2xl font-semibold">Admin přehled</h1>
         <button className="btn" onClick={()=>{ localStorage.removeItem('admin_key'); location.reload() }}>Odhlásit</button>
-        <button className="btn" onClick={exportContacts}>Export kontaktů (CSV)</button>
+        <a className="btn" href="/admin">Obnovit data</a>
       </div>
 
       {loading && <div>Načítám…</div>}
@@ -108,26 +83,21 @@ export default function AdminClient() {
             <tbody>
               {items.map(it => (
                 <tr key={it.id} className="border-b last:border-0">
-                  <td className="py-2 pr-2">
-                    <a className="text-blue-700" href={`/inzerat/${it.id}`} target="_blank" rel="noreferrer">{it.nazev}</a>
-                  </td>
+                  <td className="py-2 pr-2"><a className="text-blue-700" href={`/inzerat/${it.id}`} target="_blank" rel="noreferrer">{it.nazev}</a></td>
                   <td className="py-2 pr-2">{it.typ_inzeratu}</td>
                   <td className="py-2 pr-2">{it.produkt}</td>
                   <td className="py-2 pr-2">{it.kraj}{it.okres ? ` / ${it.okres}` : ''}</td>
-                  <td className="py-2 pr-2">
-                    {typeof it.cena_za_balik === 'number' ? `${it.cena_za_balik.toLocaleString('cs-CZ')} Kč` : '—'}
-                  </td>
+                  <td className="py-2 pr-2">{typeof it.cena_za_balik === 'number' ? `${it.cena_za_balik.toLocaleString('cs-CZ')} Kč` : '—'}</td>
                   <td className="py-2 pr-2">{it.status}</td>
-                  <td className="py-2 pr-2">
+                  <td className="py-2 pr-2 flex gap-2">
+                    {it.status === 'Nové' && <button className="btn" onClick={()=>resend(it.id)}>Poslat potvrzení</button>}
                     {it.status !== 'Archivováno'
                       ? <button className="btn" onClick={()=>act(it.id,'archive')}>Archivovat</button>
                       : <button className="btn" onClick={()=>act(it.id,'restore')}>Obnovit</button>}
                   </td>
                 </tr>
               ))}
-              {!items.length && (
-                <tr><td colSpan={7} className="py-4 text-neutral-500">Žádná data</td></tr>
-              )}
+              {!items.length && <tr><td colSpan={7} className="py-4 text-neutral-500">Žádná data</td></tr>}
             </tbody>
           </table>
         </div>
