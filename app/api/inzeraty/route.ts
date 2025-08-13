@@ -3,12 +3,12 @@ import { InzeratSchema } from '@/lib/schema'
 import { supabaseService } from '@/lib/supabaseServer'
 import { sendConfirmEmail } from '@/lib/mail'
 import { sanitizeText, fileKey } from '@/lib/utils'
+import { containsBanned } from '@/lib/moderation'
 
 export const runtime = 'nodejs'
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
-
   const typ = url.searchParams.get('typ')
   const produkt = url.searchParams.get('produkt')
   const kraj = url.searchParams.get('kraj')
@@ -17,7 +17,6 @@ export async function GET(req: NextRequest) {
   const cmin = url.searchParams.get('cmin')
   const cmax = url.searchParams.get('cmax')
   const sort = url.searchParams.get('sort') ?? 'newest'
-
   const page = Math.max(1, Number(url.searchParams.get('page') || '1'))
   const pageSize = Math.min(60, Math.max(1, Number(url.searchParams.get('pageSize') || '24')))
   const from = (page - 1) * pageSize
@@ -26,15 +25,14 @@ export async function GET(req: NextRequest) {
   const sb = supabaseService()
   let q: any = sb
     .from('inzeraty')
-    .select('*', { count: 'exact' })
+    .select('id,typ_inzeratu,nazev,produkt,mnozstvi_baliky,kraj,okres,rok_sklizne,cena_za_balik,fotky', { count: 'exact' })
     .eq('status', 'Ověřeno')
     .gt('expires_at', new Date().toISOString())
 
   if (typ) q = q.eq('typ_inzeratu', typ)
   if (produkt) q = q.eq('produkt', produkt)
   if (kraj) q = q.eq('kraj', kraj)
-  // Okres: pokud je vybraný, chceme „okres = vybraný OR okres IS NULL“
-  if (okres) q = q.or(`okres.eq.${okres},okres.is.null`)
+  if (okres) q = q.or(`okres.eq.${okres},okres.is.null`) // „bez okresu“ spadne pod všechny okresy v kraji
   if (rok) q = q.eq('rok_sklizne', rok)
   if (cmin && !Number.isNaN(Number(cmin))) q = q.gte('cena_za_balik', Number(cmin))
   if (cmax && !Number.isNaN(Number(cmax))) q = q.lte('cena_za_balik', Number(cmax))
@@ -46,19 +44,27 @@ export async function GET(req: NextRequest) {
   const { data, error, count } = await q.range(from, to)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const items = await Promise.all((data ?? []).map(async (it: any) => {
-    if (Array.isArray(it.fotky) && it.fotky.length) {
-      const signed: any[] = []
-      for (const meta of it.fotky) {
-        const p = (meta as any).path || (meta as any).key
-        if (!p) continue
-        const { data: u } = await sb.storage.from('inzeraty').createSignedUrl(p, 120)
-        signed.push({ ...(meta as any), signedUrl: u?.signedUrl })
-      }
-      it.fotky = signed
-    }
-    return it
-  }))
+  // batch signed URLs
+  const allPaths = new Set<string>()
+  ;(data ?? []).forEach((it: any) => {
+    (it.fotky || []).forEach((m: any) => {
+      const p = m?.path || m?.key
+      if (p) allPaths.add(p)
+    })
+  })
+
+  const items = [...(data || [])]
+  if (allPaths.size) {
+    const { data: signed } = await sb.storage.from('inzeraty').createSignedUrls([...allPaths], 120)
+    const map = new Map((signed || []).map((u: any) => [u.path, u.signedUrl]))
+    items.forEach((it: any) => {
+      it.fotky = (it.fotky || []).map((m: any) => {
+        const p = m?.path || m?.key
+        return p ? { ...m, signedUrl: map.get(p) } : m
+        }
+      )
+    })
+  }
 
   return NextResponse.json({ items, page, pageSize, total: count ?? 0 })
 }
@@ -93,6 +99,11 @@ export async function POST(req: NextRequest) {
     kontakt_jmeno: getStr('kontakt_jmeno'),
     kontakt_telefon: getStr('kontakt_telefon'),
     kontakt_email: getStr('kontakt_email'),
+  }
+
+  // základní moderace
+  if (containsBanned(obj.nazev) || containsBanned(obj.popis)) {
+    return NextResponse.json({ error: 'Text inzerátu obsahuje nevhodný obsah.' }, { status: 422 })
   }
 
   const parse = InzeratSchema.safeParse(obj)
