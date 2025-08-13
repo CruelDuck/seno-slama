@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseService } from '@/lib/supabaseServer'
 
-function checkAdmin(req: NextRequest) {
-  return req.headers.get('x-admin-key') === process.env.ADMIN_PASSWORD
+function ok(req: NextRequest) {
+  const key = req.headers.get('x-admin-key') || ''
+  return key && key === process.env.ADMIN_PASSWORD
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string }}) {
-  if (!checkAdmin(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const sb = supabaseService()
-  const { error } = await sb.from('inzeraty').update({ status: 'Ověřeno' }).eq('id', params.id)
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  if (!ok(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { error } = await supabaseService().from('inzeraty').update({ status: 'Ověřeno' }).eq('id', params.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
