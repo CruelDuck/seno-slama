@@ -13,12 +13,15 @@ type Item = {
 
 export default function Page() {
   const [token, setToken] = useState<string>('')
+  const [sent, setSent] = useState<boolean>(false)
   const [item, setItem] = useState<Item | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const t = new URLSearchParams(location.search).get('token') || ''
-    setToken(t)
+    const sp = new URLSearchParams(location.search)
+    const t = sp.get('token') || ''
+    const s = sp.get('sent') === '1'
+    setToken(t); setSent(s)
     if (!t) { setLoading(false); return }
     fetch('/api/inzeraty/edit?token=' + encodeURIComponent(t))
       .then(r=>r.json())
@@ -35,6 +38,15 @@ export default function Page() {
     if (!res.ok) { alert('Chyba: ' + (data?.error || res.statusText)); return }
     alert('Uloženo. Děkujeme!')
     location.href = '/'
+  }
+
+  if (sent && !token) {
+    return (
+      <div className="container py-6 space-y-3">
+        <div className="banner-success">✉️ Odkaz pro úpravu byl odeslán na váš e-mail.</div>
+        <a href="/" className="btn">Zpět na hlavní stránku</a>
+      </div>
+    )
   }
 
   if (loading) return <div className="container py-6">Načítám…</div>
@@ -59,10 +71,7 @@ export default function Page() {
             <div className="text-sm mb-1">Rok sklizně</div>
             <select name="rok_sklizne" defaultValue={item.rok_sklizne ?? ''} className="select">
               <option value="">—</option>
-              <option>2022</option>
-              <option>2023</option>
-              <option>2024</option>
-              <option>2025</option>
+              <option>2022</option><option>2023</option><option>2024</option><option>2025</option>
             </select>
           </label>
         </div>
