@@ -7,7 +7,7 @@ export const InzeratSchema = z.object({
   produkt: z.enum(['Seno','Sláma']),
   mnozstvi_baliky: z.coerce.number().int().positive('Zadejte množství (kladné celé číslo)'),
   kraj: z.enum(KRAJE as any, { errorMap: () => ({ message: 'Vyberte kraj' }) }),
-  okres: z.string().optional().nullable(), // ověříme níže refinem
+  okres: z.string().optional().nullable(), // zkontrolujeme vazbu na kraj níže
   sec: z.string().max(20).optional().nullable(),
   rok_sklizne: z.enum(ROKY_SKLIZNE as any).optional().nullable(),
   cena_za_balik: z.coerce.number().int().nonnegative().optional().nullable(),
@@ -20,11 +20,7 @@ export const InzeratSchema = z.object({
     const kraj = val.kraj as Kraj
     const allowed = new Set(OKRESY[kraj] || [])
     if (!allowed.has(val.okres)) {
-      ctx.addIssue({
-        path: ['okres'],
-        code: z.ZodIssueCode.custom,
-        message: 'Vybraný okres neodpovídá zvolenému kraji',
-      })
+      ctx.addIssue({ path: ['okres'], code: z.ZodIssueCode.custom, message: 'Vybraný okres neodpovídá zvolenému kraji' })
     }
   }
 })
