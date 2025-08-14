@@ -7,7 +7,7 @@ const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://seno-slama.vercel.app'
 const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@example.com'
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
-function json(data: any, init?: number | ResponseInit) {
+function json(data: any, init?: ResponseInit) {
   return NextResponse.json(data, init)
 }
 
@@ -94,7 +94,7 @@ export async function PUT(req: NextRequest) {
   const s = (k: string) => {
     const v = body[k]
     if (v === '' || v == null) patch[k] = null
-    else patch[k] = String(v).toString()
+    else patch[k] = String(v)
   }
 
   // povolená pole
@@ -110,4 +110,3 @@ export async function PUT(req: NextRequest) {
 
   return json({ ok: true })
 }
- 
