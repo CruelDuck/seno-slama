@@ -2,36 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Téma – decentní akcenty */
+/* Design tokens */
 :root{
-  --accent: #16a34a;      /* zelená */
-  --accent-600: #15803d;
-  --accent-700: #166534;
-  --amber-500: #f59e0b;
-  --amber-600: #d97706;
-  --ring: 0 0 #0000;
+  --brand:#10b981;        /* hlavní akcent (zelená) */
+  --brand-600:#059669;
+  --brand-700:#047857;
+
+  --seno-border:#a7f3d0;  /* emerald-200 */
+  --seno-bg:#ecfdf5;      /* emerald-50 */
+  --seno-text:#065f46;    /* emerald-800 */
+
+  --slama-border:#fcd34d; /* amber-300 */
+  --slama-bg:#fffbeb;     /* amber-50 */
+  --slama-text:#92400e;   /* amber-800 */
 }
 
-/* Kontejner */
-@layer components {
-  .container-p { @apply max-w-6xl mx-auto px-4; }
-  .card { @apply rounded-2xl border border-zinc-200 bg-white shadow-sm; }
-  .badge { @apply inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700; }
-  .btn { @apply inline-flex items-center justify-center rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-50 active:translate-y-px; }
-  .btn-primary { @apply border-transparent bg-[var(--accent)] text-white hover:bg-[var(--accent-600)] active:bg-[var(--accent-700)]; }
-  .input { @apply w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none ring-2 ring-transparent focus:ring-[color:var(--accent)/.25]; }
-  .select { @apply w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none ring-2 ring-transparent focus:ring-[color:var(--accent)/.25]; }
-  .textarea { @apply w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none ring-2 ring-transparent focus:ring-[color:var(--accent)/.25]; }
-  .label { @apply mb-1 block text-xs font-medium text-zinc-600; }
-  .section-title { @apply mb-2 text-sm font-semibold text-zinc-800; }
+/* Layout helpers */
+.container-p { max-width: 1080px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+
+/* Cards, inputs, buttons */
+.card { border: 1px solid #e5e7eb; border-radius: 16px; background: #fff; }
+.input, .select, .textarea {
+  width: 100%; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; background: #fff;
+}
+.input:focus, .select:focus, .textarea:focus {
+  outline: none; border-color: #cbd5e1; box-shadow: 0 0 0 3px rgba(59,130,246,.15)
+}
+.btn {
+  display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid #e5e7eb; background:#fff; color:#111827;
+  border-radius:999px; padding:8px 14px; font-weight:500; transition:.15s;
+}
+.btn:hover { background:#f9fafb; border-color:#d1d5db }
+.btn-primary { border-color: var(--brand); background: var(--brand); color:#fff; }
+.btn-primary:hover { background: var(--brand-600); border-color: var(--brand-600) }
+.banner-success { background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; border-radius:12px; padding:10px 12px; }
+.section-title { font-weight:600; color:#374151; margin-bottom:6px; }
+.label { font-size:.875rem; color:#374151; margin-bottom:4px; font-weight:500; }
+
+/* Produktové barvy – SENO vs SLÁMA */
+.card-seno { border-color: var(--seno-border); }
+.card-slama { border-color: var(--slama-border); }
+
+.badge-seno { background: var(--seno-bg); color: var(--seno-text); border-color: var(--seno-border); }
+.badge-slama { background: var(--slama-bg); color: var(--slama-text); border-color: var(--slama-border); }
+
+/* Placeholder (když chybí fotka) */
+.ph { width:100%; height:100%; }
+.ph-seno {
+  background: radial-gradient(120% 80% at 20% 20%, #fef9c3 0%, #fde68a 35%, #fef3c7 70%);
+}
+.ph-slama {
+  background: radial-gradient(120% 80% at 20% 20%, #fff7ed 0%, #fde68a 45%, #fef3c7 80%);
 }
 
-/* Rámeček karet podle typu */
-.card-offer { @apply ring-1 ring-green-300; }
-.card-demand { @apply ring-1 ring-amber-300; }
-
-/* Placeholder obrázek */
-.placeholder { @apply flex h-full w-full items-center justify-center bg-zinc-100 text-zinc-400; }
-
-/* Banner */
-.banner-success { @apply rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800; }
+/* Header */
+.header-blur { background: rgba(255,255,255,0.7); backdrop-filter: blur(8px); }
