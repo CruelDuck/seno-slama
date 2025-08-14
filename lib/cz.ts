@@ -1,23 +1,10 @@
 export const KRAJE = [
-  'Hlavní město Praha',
-  'Středočeský',
-  'Jihočeský',
-  'Plzeňský',
-  'Karlovarský',
-  'Ústecký',
-  'Liberecký',
-  'Královéhradecký',
-  'Pardubický',
-  'Vysočina',
-  'Jihomoravský',
-  'Olomoucký',
-  'Zlínský',
-  'Moravskoslezský',
-] as const
+  'Hlavní město Praha','Středočeský','Jihočeský','Plzeňský','Karlovarský',
+  'Ústecký','Liberecký','Královéhradecký','Pardubický','Vysočina',
+  'Jihomoravský','Olomoucký','Zlínský','Moravskoslezský'
+]
 
-export type Kraj = typeof KRAJE[number]
-
-export const OKRESY: Record<Kraj, string[]> = {
+export const OKRESY: Record<string, string[]> = {
   'Hlavní město Praha': ['Praha'],
   'Středočeský': ['Benešov','Beroun','Kladno','Kolín','Kutná Hora','Mělník','Mladá Boleslav','Nymburk','Praha-východ','Praha-západ','Příbram','Rakovník'],
   'Jihočeský': ['České Budějovice','Český Krumlov','Jindřichův Hradec','Písek','Prachatice','Strakonice','Tábor'],
@@ -31,7 +18,7 @@ export const OKRESY: Record<Kraj, string[]> = {
   'Jihomoravský': ['Blansko','Brno-město','Brno-venkov','Břeclav','Hodonín','Vyškov','Znojmo'],
   'Olomoucký': ['Jeseník','Olomouc','Prostějov','Přerov','Šumperk'],
   'Zlínský': ['Kroměříž','Uherské Hradiště','Vsetín','Zlín'],
-  'Moravskoslezský': ['Bruntál','Frýdek-Místek','Karviná','Nový Jičín','Opava','Ostrava-město'],
+  'Moravskoslezský': ['Bruntál','Frýdek-Místek','Karviná','Nový Jičín','Opava','Ostrava-město']
 }
 
-export const ROKY_SKLIZNE = ['2022','2023','2024','2025'] as const
+export const ROKY_SKLIZNE = ['2022','2023','2024','2025']
