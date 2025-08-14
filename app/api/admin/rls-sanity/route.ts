@@ -6,21 +6,29 @@ export const runtime = 'edge'
 export async function GET() {
   const sb = supabaseAnon()
 
-  // 1) anonymní SELECT – RLS by měla vracet jen Ověřeno + neexpirované
+  // 1) anonymní SELECT – RLS má vracet jen Ověřeno + neexpirované
   const { data: list, error: selErr } = await sb
     .from('inzeraty')
     .select('id,status,expires_at')
-    .limit(5)
+    .limit(3)
 
-  // 2) anonymní UPDATE – RLS by ho měla ZAKÁZAT
-  const { error: updErr } = await sb
-    .from('inzeraty')
-    .update({ nazev: 'TEST' })
-    .eq('id', '00000000-0000-0000-0000-000000000000')
+  // 2) anonymní UPDATE – tentokrát to zkusíme na skutečném řádku,
+  //    který anonym VIDI (tj. RLS SELECT ho pustil).
+  let updateDenied: boolean | null = null
+  if (list && list.length) {
+    const targetId = list[0].id
+    const { error: updErr } = await sb
+      .from('inzeraty')
+      .update({ nazev: 'RLS TEST (nemělo projít)' })
+      .eq('id', targetId)
+
+    // Pokud RLS funguje, updErr musí být neprázdné → updateDenied = true
+    updateDenied = !!updErr
+  }
 
   return NextResponse.json({
-    ok: !selErr,            // SELECT proběhl
-    updateDenied: !!updErr, // true = UPDATE správně zakázán
-    sample: list ?? [],     // pár řádků na ukázku
+    ok: !selErr,
+    updateDenied, // true = UPDATE správně zamítnut (RLS OK), false = problém
+    sample: list ?? [],
   })
 }
