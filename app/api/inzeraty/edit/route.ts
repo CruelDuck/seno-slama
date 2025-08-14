@@ -1,69 +1,112 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseService } from '@/lib/supabaseServer'
-import { InzeratSchema } from '@/lib/schema'
-import { sanitizeText } from '@/lib/utils'
+import { Resend } from 'resend'
+import { rateLimit } from '@/lib/rateLimit'
 
-export const runtime = 'nodejs'
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://seno-slama.vercel.app'
+const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@example.com'
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
-// povoleno upravit jen tato pole
-const EDITABLE_FIELDS = new Set(['mnozstvi_baliky','cena_za_balik','rok_sklizne','popis','kontakt_telefon'])
-
-async function getByToken(token: string, sb = supabaseService()) {
-  const { data: t } = await sb
-    .from('edit_tokens')
-    .select('token, inzerat_id, email, used, expires_at')
-    .eq('token', token)
-    .single()
-  if (!t) return { error: 'Token not found' }
-  if (t.used) return { error: 'Token already used' }
-  if (new Date(t.expires_at) < new Date()) return { error: 'Token expired' }
-
-  const { data: ad } = await sb.from('inzeraty').select('*').eq('id', t.inzerat_id).single()
-  if (!ad) return { error: 'Ad not found' }
-  return { t, ad }
+function json(data: any, init?: number | ResponseInit) {
+  return NextResponse.json(data, init)
 }
 
+// GET /api/inzeraty/edit?token=...  → vrátí ad pro editaci
 export async function GET(req: NextRequest) {
   const token = new URL(req.url).searchParams.get('token') || ''
-  if (!token) return NextResponse.json({ error: 'Missing token' }, { status: 400 })
-  const res = await getByToken(token)
-  if ((res as any).error) return NextResponse.json(res, { status: 400 })
-  return NextResponse.json({ item: (res as any).ad })
-}
-
-export async function POST(req: NextRequest) {
-  const url = new URL(req.url)
-  const token = url.searchParams.get('token') || ''
-  if (!token) return NextResponse.json({ error: 'Missing token' }, { status: 400 })
+  if (!token) return json({ error: 'Chybí token.' }, { status: 400 })
 
   const sb = supabaseService()
-  const found = await getByToken(token, sb)
-  if ((found as any).error) return NextResponse.json(found, { status: 400 })
-  const { ad, t } = found as any
+  const { data: tok } = await sb.from('confirm_tokens').select('*')
+    .eq('token', token).eq('used', false).gt('expires_at', new Date().toISOString()).maybeSingle()
+  if (!tok) return json({ error: 'Neplatný nebo expirovaný odkaz.' }, { status: 400 })
 
-  const form = await req.formData()
-  const obj: any = {}
-  EDITABLE_FIELDS.forEach((k)=> {
-    const v = form.get(k)
-    if (typeof v === 'string') {
-      const s = sanitizeText(v.trim())
-      if (s !== '') obj[k] = s
-      else if (k === 'cena_za_balik') obj[k] = null
-    }
-  })
+  const { data: ad } = await sb.from('inzeraty').select('*').eq('id', tok.inzerat_id).maybeSingle()
+  if (!ad) return json({ error: 'Inzerát nenalezen.' }, { status: 404 })
 
-  // validace proti plnému schématu – doplníme původní hodnoty
-  const merged = { ...ad, ...obj }
-  const parsed = InzeratSchema.safeParse(merged)
-  if (!parsed.success) {
-    const flat = parsed.error.flatten()
-    return NextResponse.json({ error: 'VALIDATION', fieldErrors: flat.fieldErrors }, { status: 422 })
+  return json({ ad })
+}
+
+// POST /api/inzeraty/edit  (form z /upravit bez tokenu) → pošle e-mail s odkazem
+export async function POST(req: NextRequest) {
+  // Rate-limit: max 3 požadavky / hod.
+  const rl = await rateLimit(req, 'inzeraty_edit_request', 3, 3600)
+  if (rl.limited) {
+    return json({ error: 'Příliš mnoho požadavků. Zkuste to později.' }, { status: 429 })
   }
 
-  const { error: uerr } = await sb.from('inzeraty').update(obj).eq('id', ad.id)
-  if (uerr) return NextResponse.json({ error: uerr.message }, { status: 500 })
+  const ct = req.headers.get('content-type') || ''
+  if (!ct.includes('multipart/form-data') && !ct.includes('application/x-www-form-urlencoded')) {
+    return json({ error: 'Špatný formát.' }, { status: 400 })
+  }
 
-  await sb.from('edit_tokens').update({ used: true }).eq('token', t.token)
+  const fd = await req.formData()
+  const id = String(fd.get('id') || '')
+  const email = String(fd.get('email') || '').toLowerCase().trim()
+  if (!id || !email) return json({ error: 'Chybí data.' }, { status: 400 })
 
-  return NextResponse.json({ ok: true })
+  const sb = supabaseService()
+  const { data: ad } = await sb.from('inzeraty').select('id,kontakt_email,nazev').eq('id', id).maybeSingle()
+
+  // „privacy preserving“ — i když nesedí, vrátíme stejnou odpověď
+  const redirect = NextResponse.redirect(`${SITE}/upravit?sent=1`, 302)
+  if (!ad || String(ad.kontakt_email).toLowerCase() !== email) {
+    return redirect
+  }
+
+  const token = crypto.randomUUID()
+  await sb.from('confirm_tokens').insert({ token, inzerat_id: id, email, used: false })
+
+  const url = `${SITE}/upravit?token=${token}`
+  if (resend) {
+    try {
+      await resend.emails.send({
+        from: EMAIL_FROM,
+        to: email,
+        subject: 'Odkaz pro úpravu inzerátu (Seno/Sláma)',
+        html: `<p>Dobrý den,</p><p>klikněte na odkaz pro úpravu inzerátu:</p><p><a href="${url}">${url}</a></p><p>Odkaz je platný 24 hodin.</p>`,
+      })
+    } catch {
+      // i kdyby e-mail selhal, UI ukáže potvrzení; odkaz lze dohledat v logu
+    }
+  }
+
+  return redirect
+}
+
+// PUT /api/inzeraty/edit?token=...  → uloží změny (bez změny typu/produktu/e-mailu)
+export async function PUT(req: NextRequest) {
+  const token = new URL(req.url).searchParams.get('token') || ''
+  if (!token) return json({ error: 'Chybí token.' }, { status: 400 })
+  const body = await req.json().catch(()=> ({} as any))
+
+  const sb = supabaseService()
+  const { data: tok } = await sb.from('confirm_tokens').select('*')
+    .eq('token', token).eq('used', false).gt('expires_at', new Date().toISOString()).maybeSingle()
+  if (!tok) return json({ error: 'Neplatný nebo expirovaný odkaz.' }, { status: 400 })
+
+  const patch: any = {}
+  const n = (k: string) => {
+    const v = body[k]
+    if (v === '' || v == null) patch[k] = null
+    else patch[k] = Number(v)
+  }
+  const s = (k: string) => {
+    const v = body[k]
+    if (v === '' || v == null) patch[k] = null
+    else patch[k] = String(v).toString()
+  }
+
+  // povolená pole
+  s('nazev')
+  n('mnozstvi_baliky')
+  n('cena_za_balik')
+  s('rok_sklizne')
+  s('popis')
+  s('kontakt_telefon')
+
+  const { error } = await sb.from('inzeraty').update(patch).eq('id', tok.inzerat_id)
+  if (error) return json({ error: 'Uložení selhalo.' }, { status: 500 })
+
+  return json({ ok: true })
 }
