@@ -1,154 +1,220 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { InzeratSchema } from '@/lib/schema'
+import { createClient } from '@supabase/supabase-js'
 import { supabaseService } from '@/lib/supabaseServer'
-import { sendConfirmEmail } from '@/lib/mail'
-import { sanitizeText, fileKey } from '@/lib/utils'
-import { containsBanned } from '@/lib/moderation'
+import { InzeratSchema } from '@/lib/schema'
+import { Resend } from 'resend'
+import { rateLimit } from '@/lib/rateLimit'
 
-export const runtime = 'nodejs'
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://seno-slama.vercel.app'
+const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@example.com'
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
+const UPLOAD_MAX_MB = Number(process.env.UPLOAD_MAX_MB || 2)
+const ALLOWED_IMAGE_TYPES = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp')
+  .split(',').map(s => s.trim()).filter(Boolean)
+
+// ---- helpers ----
+function json(data: any, init?: number | ResponseInit) {
+  return NextResponse.json(data, init)
+}
+
+async function signPhotos(paths: string[]) {
+  if (!paths?.length) return []
+  const sb = supabaseService()
+  const s = sb.storage.from('inzeraty')
+  const out: { signedUrl: string }[] = []
+  for (const p of paths) {
+    const { data } = await s.createSignedUrl(p, 60 * 60) // 1h
+    if (data?.signedUrl) out.push({ signedUrl: data.signedUrl })
+  }
+  return out
+}
+
+function cleanText(s: unknown, max = 3000) {
+  if (typeof s !== 'string') return undefined
+  const stripped = s.replace(/<[^>]*>/g, '').trim()
+  return stripped.slice(0, max)
+}
+
+// ---- GET /api/inzeraty?typ=&produkt=&kraj=&kraj_id=&okres=&okres_id=&rok=&cmin=&cmax=&sort=&page= ----
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
-  const typ = url.searchParams.get('typ')
-  const produkt = url.searchParams.get('produkt')
-  const kraj = url.searchParams.get('kraj')
-  const okres = url.searchParams.get('okres')
-  const rok = url.searchParams.get('rok')
-  const cmin = url.searchParams.get('cmin')
-  const cmax = url.searchParams.get('cmax')
-  const sort = url.searchParams.get('sort') ?? 'newest'
-  const page = Math.max(1, Number(url.searchParams.get('page') || '1'))
-  const pageSize = Math.min(60, Math.max(1, Number(url.searchParams.get('pageSize') || '24')))
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
+  const typ = url.searchParams.get('typ') || undefined
+  const produkt = url.searchParams.get('produkt') || undefined
+  const kraj = url.searchParams.get('kraj') || undefined
+  const okres = url.searchParams.get('okres') || undefined
+  const kraj_id = url.searchParams.get('kraj_id') || undefined
+  const okres_id = url.searchParams.get('okres_id') || undefined
+  const rok = url.searchParams.get('rok') || undefined
+  const cmin = url.searchParams.get('cmin') ? Number(url.searchParams.get('cmin')) : undefined
+  const cmax = url.searchParams.get('cmax') ? Number(url.searchParams.get('cmax')) : undefined
+  const sort = url.searchParams.get('sort') || 'nejnovejsi'
+  const page = Math.max(1, Number(url.searchParams.get('page') || 1))
+  const pageSize = Math.min(60, Math.max(1, Number(url.searchParams.get('page_size') || 60)))
+  const offset = (page - 1) * pageSize
 
   const sb = supabaseService()
-  let q: any = sb
-    .from('inzeraty')
-    .select('id,typ_inzeratu,nazev,produkt,mnozstvi_baliky,kraj,okres,rok_sklizne,cena_za_balik,fotky', { count: 'exact' })
+  let q = sb.from('inzeraty')
+    .select('*', { count: 'exact' })
     .eq('status', 'Ověřeno')
     .gt('expires_at', new Date().toISOString())
 
   if (typ) q = q.eq('typ_inzeratu', typ)
   if (produkt) q = q.eq('produkt', produkt)
-  if (kraj) q = q.eq('kraj', kraj)
-  if (okres) q = q.or(`okres.eq.${okres},okres.is.null`) // „bez okresu“ spadne pod všechny okresy v kraji
+  if (kraj_id) q = q.eq('kraj_id', Number(kraj_id))
+  else if (kraj) q = q.eq('kraj', kraj)
+  if (okres_id) q = q.eq('okres_id', Number(okres_id))
+  else if (okres) q = q.eq('okres', okres)
   if (rok) q = q.eq('rok_sklizne', rok)
-  if (cmin && !Number.isNaN(Number(cmin))) q = q.gte('cena_za_balik', Number(cmin))
-  if (cmax && !Number.isNaN(Number(cmax))) q = q.lte('cena_za_balik', Number(cmax))
+  if (typeof cmin === 'number' && !Number.isNaN(cmin)) q = q.gte('cena_za_balik', cmin)
+  if (typeof cmax === 'number' && !Number.isNaN(cmax)) q = q.lte('cena_za_balik', cmax)
 
   if (sort === 'cena_asc') q = q.order('cena_za_balik', { ascending: true, nullsFirst: true })
-  else if (sort === 'cena_desc') q = q.order('cena_za_balik', { ascending: false, nullsFirst: false })
+  else if (sort === 'cena_desc') q = q.order('cena_za_balik', { ascending: false /* nulls default (u DESC bývají první) */ })
   else q = q.order('created_at', { ascending: false })
 
-  const { data, error, count } = await q.range(from, to)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const { data, error, count } = await q.range(offset, offset + pageSize - 1)
+  if (error) return json({ items: [], count: 0 })
 
-  // batch signed URLs
-  const allPaths = new Set<string>()
-  ;(data ?? []).forEach((it: any) => {
-    (it.fotky || []).forEach((m: any) => {
-      const p = m?.path || m?.key
-      if (p) allPaths.add(p)
-    })
-  })
+  // podepsané URL pro fotky
+  const items = await Promise.all((data || []).map(async (row: any) => {
+    const paths: string[] = (row.fotky || []).map((f: any) => f?.path).filter(Boolean)
+    const signed = await signPhotos(paths)
+    return { ...row, fotky: signed }
+  }))
 
-  const items = [...(data || [])]
-  if (allPaths.size) {
-    const { data: signed } = await sb.storage.from('inzeraty').createSignedUrls([...allPaths], 120)
-    const map = new Map((signed || []).map((u: any) => [u.path, u.signedUrl]))
-    items.forEach((it: any) => {
-      it.fotky = (it.fotky || []).map((m: any) => {
-        const p = m?.path || m?.key
-        return p ? { ...m, signedUrl: map.get(p) } : m
-        }
-      )
-    })
-  }
-
-  return NextResponse.json({ items, page, pageSize, total: count ?? 0 })
+  return json({ items, count })
 }
 
+// ---- POST /api/inzeraty (multipart/form-data) ----
 export async function POST(req: NextRequest) {
+  // Rate-limit: max 1 odeslání / 60 s na IP
+  const rl = await rateLimit(req, 'inzeraty_create', 1, 60)
+  if (rl.limited) {
+    return json({ error: 'Odesíláte příliš často. Zkuste to prosím za minutu.' }, { status: 429 })
+  }
+
+  const ct = req.headers.get('content-type') || ''
+  if (!ct.includes('multipart/form-data')) {
+    return json({ error: 'Očekávám multipart/form-data.' }, { status: 400 })
+  }
+
+  // anti-spam: honeypot + min. 2 s mezi otevřením a odesláním
   const started = Number(req.headers.get('x-form-started-ms') || 0)
   if (!started || Date.now() - started < 2000) {
-    return NextResponse.json({ error: 'Příliš rychlý submit.' }, { status: 400 })
+    return json({ error: 'Příliš rychlý submit.' }, { status: 400 })
   }
 
-  const form = await req.formData()
-  if ((form.get('hp') as string) || (form.get('website') as string)) return NextResponse.json({ ok: true })
+  const fd = await req.formData()
+  const honeypot = String(fd.get('hp') || fd.get('website') || '')
+  if (honeypot.trim() !== '') return json({ ok: true }) // bot → „OK“, ale nic neuděláme
 
-  const getStr = (k: string) => {
-    const v = form.get(k)
-    if (typeof v !== 'string') return undefined
-    const s = v.trim()
-    return s === '' ? undefined : sanitizeText(s)
+  // poskládej payload
+  const body: Record<string, any> = {}
+  for (const [k, v] of fd.entries()) {
+    if (k === 'fotky') continue
+    if (typeof v === 'string') body[k] = v
   }
 
-  const obj: any = {
-    typ_inzeratu: getStr('typ_inzeratu'),
-    nazev: getStr('nazev'),
-    produkt: getStr('produkt'),
-    mnozstvi_baliky: getStr('mnozstvi_baliky'),
-    kraj: getStr('kraj'),
-    okres: getStr('okres'),
-    sec: getStr('sec'),
-    rok_sklizne: getStr('rok_sklizne'),
-    cena_za_balik: getStr('cena_za_balik'),
-    popis: getStr('popis'),
-    kontakt_jmeno: getStr('kontakt_jmeno'),
-    kontakt_telefon: getStr('kontakt_telefon'),
-    kontakt_email: getStr('kontakt_email'),
+  // normalizace textů
+  body.nazev = cleanText(body.nazev, 120)
+  body.popis = cleanText(body.popis, 3000)
+  body.sec = cleanText(body.sec, 20)
+
+  // validace (Zod schéma už má coerce na čísla atd.)
+  const parsed = InzeratSchema.safeParse(body)
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string[]> = {}
+    for (const e of parsed.error.issues) {
+      if (!fieldErrors[e.path[0] as string]) fieldErrors[e.path[0] as string] = []
+      fieldErrors[e.path[0] as string].push(e.message)
+    }
+    return json({ error: 'Neplatná data', fieldErrors }, { status: 400 })
   }
+  const values = parsed.data
 
-  // základní moderace
-  if (containsBanned(obj.nazev) || containsBanned(obj.popis)) {
-    return NextResponse.json({ error: 'Text inzerátu obsahuje nevhodný obsah.' }, { status: 422 })
-  }
-
-  const parse = InzeratSchema.safeParse(obj)
-  if (!parse.success) {
-    const flat = parse.error.flatten()
-    return NextResponse.json({ error: 'VALIDATION', fieldErrors: flat.fieldErrors }, { status: 422 })
-  }
-
-  // Upload fotek 0–3
-  const files = form.getAll('fotky').filter(Boolean) as File[]
-  const maxMb = Number(process.env.UPLOAD_MAX_MB || 2)
-  const allowed = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp').split(',')
-  const metas: any[] = []
-
+  // ulož inzerát (status Nové, expirace +30 dní)
   const sb = supabaseService()
-  for (const f of files.slice(0, 3)) {
-    if (!allowed.includes(f.type)) return NextResponse.json({ error: 'Nepodporovaný formát.' }, { status: 400 })
-    const mb = f.size / (1024 * 1024)
-    if (mb > maxMb) return NextResponse.json({ error: 'Soubor je příliš velký.' }, { status: 400 })
-    const key = fileKey((f as any).name || 'upload.bin')
-    const { data: up, error: upErr } = await sb.storage.from('inzeraty').upload(key, await f.arrayBuffer(), { contentType: f.type, upsert: false })
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
-    metas.push({ path: up.path, mime: f.type, size: f.size })
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+  const insertPayload: any = {
+    ...values,
+    status: 'Nové',
+    expires_at: expiresAt,
   }
 
-  const { data: ins, error: e1 } = await sb
-    .from('inzeraty')
-    .insert({ ...parse.data, fotky: metas })
-    .select('id, kontakt_email, nazev')
-    .single()
-  if (e1 || !ins) return NextResponse.json({ error: e1?.message || 'Insert failed' }, { status: 500 })
+  // kompatibilita: když přišel kraj_id/okres_id, nepropaguj duplicitně textové
+  if (values.kraj_id) delete insertPayload.kraj
+  if (values.okres_id) delete insertPayload.okres
 
-  const { data: tok, error: e2 } = await sb
-    .from('confirm_tokens')
-    .insert({ inzerat_id: ins.id, email: ins.kontakt_email })
-    .select('token')
-    .single()
-  if (e2 || !tok) return NextResponse.json({ error: e2?.message || 'Token failed' }, { status: 500 })
+  const { data: created, error: insErr } = await sb.from('inzeraty').insert(insertPayload).select().maybeSingle()
+  if (insErr || !created) return json({ error: 'Uložení selhalo.' }, { status: 500 })
 
-  const mail = await sendConfirmEmail(ins.kontakt_email, tok.token, ins.nazev)
+  // upload fotek (0–3), validuj typ a velikost
+  const files = fd.getAll('fotky').filter(Boolean) as File[]
+  const bucket = sb.storage.from('inzeraty')
+  const savedPaths: string[] = []
 
-  return NextResponse.json({
+  for (let i = 0; i < Math.min(3, files.length); i++) {
+    const f = files[i]
+    if (!ALLOWED_IMAGE_TYPES.includes(f.type)) {
+      continue // ignoruj neplatný typ
+    }
+    const maxBytes = UPLOAD_MAX_MB * 1024 * 1024
+    if (f.size > maxBytes) {
+      continue // ignoruj příliš velké
+    }
+    const ext = f.name.split('.').pop() || 'bin'
+    const path = `${created.id}/${crypto.randomUUID()}.${ext}`
+    const arrayBuf = await f.arrayBuffer()
+    const { error: upErr } = await bucket.upload(path, new Uint8Array(arrayBuf), {
+      contentType: f.type,
+      upsert: false,
+    })
+    if (!upErr) savedPaths.push(path)
+  }
+
+  if (savedPaths.length) {
+    await sb.from('inzeraty').update({ fotky: savedPaths.map(p => ({ path: p })) }).eq('id', created.id)
+  }
+
+  // vytvoř potvrzovací token
+  const token = crypto.randomUUID()
+  await sb.from('confirm_tokens').insert({
+    token,
+    inzerat_id: created.id,
+    email: values.kontakt_email,
+    used: false,
+  })
+
+  const confirmUrl = `${SITE}/potvrdit?token=${token}`
+  let emailSent: boolean | undefined
+  let emailError: any = undefined
+
+  // pošli e-mail (pokud je nastaven Resend)
+  if (resend) {
+    try {
+      await resend.emails.send({
+        from: EMAIL_FROM,
+        to: values.kontakt_email,
+        subject: 'Potvrzení inzerátu (Seno/Sláma)',
+        html: `<p>Dobrý den,</p>
+<p>potvrďte prosím vložení inzerátu kliknutím na odkaz:</p>
+<p><a href="${confirmUrl}">${confirmUrl}</a></p>
+<p>Odkaz platí 24 hodin.</p>`,
+      })
+      emailSent = true
+    } catch (e: any) {
+      emailSent = false
+      emailError = e?.message || e
+    }
+  }
+
+  // odpověď
+  return json({
     ok: true,
-    emailSent: mail.sent,
-    emailError: typeof mail.error === 'string' ? mail.error : (mail.error ? JSON.stringify(mail.error) : undefined),
-    confirmUrl: mail.sent ? undefined : mail.url,
+    id: created.id,
+    emailSent,
+    emailError,
+    confirmUrl: resend ? (emailSent ? undefined : confirmUrl) : confirmUrl,
   })
 }
