@@ -58,3 +58,11 @@
 
 /* Header */
 .header-blur { background: rgba(255,255,255,0.7); backdrop-filter: blur(8px); }
+
+
+/* buttons */
+.btn { @apply inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium transition border border-transparent bg-neutral-100 text-neutral-900 hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-300; }
+
+.btn-primary { @apply bg-green-600 text-white hover:bg-green-700 hover:text-white focus:ring-green-400; }
+/* sekundární pro odkazy v textu/kartách */
+.btn-ghost { @apply bg-transparent text-neutral-800 hover:bg-neutral-100; }
