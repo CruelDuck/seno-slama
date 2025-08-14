@@ -1,103 +1,39 @@
-'use client'
-import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import EditClient from './EditClient'
 
-type Item = {
-  id: string
-  mnozstvi_baliky: number
-  cena_za_balik: number | null
-  rok_sklizne: string | null
-  popis: string | null
-  kontakt_telefon: string
-  nazev: string
-}
+export const metadata = { title: 'Upravit inzerát', robots: { index: false, follow: true } }
 
-export default function Page() {
-  const [token, setToken] = useState<string>(''); const [sent, setSent] = useState<boolean>(false)
-  const [item, setItem] = useState<Item | null>(null); const [loading, setLoading] = useState(true)
+export default function UpravitPage({ searchParams }: { searchParams?: { sent?: string, token?: string } }) {
+  const sent = searchParams?.sent === '1'
+  const token = searchParams?.token || ''
 
-  useEffect(() => {
-    const sp = new URLSearchParams(location.search)
-    const t = sp.get('token') || ''
-    const s = sp.get('sent') === '1'
-    setToken(t); setSent(s)
-    if (!t) { setLoading(false); return }
-    fetch('/api/inzeraty/edit?token=' + encodeURIComponent(t))
-      .then(r=>r.json()).then(d=> { if (d?.item) setItem(d.item) }).finally(()=> setLoading(false))
-  }, [])
-
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    if (!token) { alert('Chybí token'); return }
-    const fd = new FormData(e.currentTarget)
-    const res = await fetch('/api/inzeraty/edit?token=' + encodeURIComponent(token), { method: 'POST', body: fd })
-    const data = await res.json().catch(()=>({}))
-    if (!res.ok) { alert('Chyba: ' + (data?.error || res.statusText)); return }
-    alert('Uloženo. Děkujeme!')
-    location.href = '/'
-  }
-
-  async function extend() {
-    if (!token) return
-    const r = await fetch('/api/inzeraty/edit/extend?token=' + encodeURIComponent(token), { method: 'POST' })
-    if (r.ok) { alert('Platnost prodloužena o 30 dní.'); location.href='/' }
-    else alert('Nepodařilo se prodloužit.')
-  }
-
-  async function del() {
-    if (!token) return
-    if (!confirm('Opravdu smazat inzerát?')) return
-    const r = await fetch('/api/inzeraty/edit/delete?token=' + encodeURIComponent(token), { method: 'POST' })
-    if (r.ok) { alert('Inzerát smazán.'); location.href='/' }
-    else alert('Nepodařilo se smazat.')
-  }
-
-  if (sent && !token) {
+  if (token) {
+    // režim: mám token → zobraz editační UI
     return (
-      <div className="container-p py-6 space-y-3">
-        <div className="banner-success">✉️ Odkaz pro úpravu byl odeslán na váš e-mail.</div>
-        <a href="/" className="btn">Zpět na hlavní stránku</a>
+      <div className="container-p max-w-2xl py-8">
+        <h1 className="text-2xl font-semibold mb-4">Upravit inzerát</h1>
+        <EditClient token={token} />
       </div>
     )
   }
-  if (loading) return <div className="container-p py-6">Načítám…</div>
-  if (!token) return <div className="container-p py-6">Chybí token.</div>
-  if (!item) return <div className="container-p py-6">Token je neplatný nebo vypršel.</div>
 
+  // režim: požádat o odkaz pro úpravu (zadá ID a e-mail)
   return (
-    <div className="container-p py-6 space-y-4">
-      <h1 className="text-2xl font-semibold">Upravit inzerát</h1>
-      <div className="text-zinc-600">{item.nazev}</div>
-      <form onSubmit={onSubmit} className="card p-4 space-y-3">
-        <div className="grid sm:grid-cols-3 gap-3">
-          <label className="block">
-            <div className="text-sm mb-1">Množství (ks)</div>
-            <input name="mnozstvi_baliky" type="number" defaultValue={item.mnozstvi_baliky} className="input" required />
-          </label>
-          <label className="block">
-            <div className="text-sm mb-1">Cena za balík (Kč)</div>
-            <input name="cena_za_balik" type="number" defaultValue={item.cena_za_balik ?? ''} className="input" />
-          </label>
-          <label className="block">
-            <div className="text-sm mb-1">Rok sklizně</div>
-            <select name="rok_sklizne" defaultValue={item.rok_sklizne ?? ''} className="select">
-              <option value="">—</option><option>2022</option><option>2023</option><option>2024</option><option>2025</option>
-            </select>
-          </label>
+    <div className="container-p max-w-xl py-8">
+      <h1 className="text-2xl font-semibold mb-4">Upravit inzerát</h1>
+      {sent ? (
+        <div className="card p-4 space-y-3">
+          <p>Pokud e-mail existuje, poslali jsme vám odkaz na úpravu. Zkontrolujte poštu i spam.</p>
+          <Link className="btn" href="/">Zpět na katalog</Link>
         </div>
-        <label className="block">
-          <div className="text-sm mb-1">Popis</div>
-          <textarea name="popis" className="textarea" rows={6} defaultValue={item.popis ?? ''}></textarea>
-        </label>
-        <label className="block">
-          <div className="text-sm mb-1">Kontakt – Telefon</div>
-          <input name="kontakt_telefon" defaultValue={item.kontakt_telefon} className="input" />
-        </label>
-        <div className="flex gap-2">
-          <button className="btn btn-primary" type="submit">Uložit změny</button>
-          <button className="btn" type="button" onClick={extend}>Prodloužit o 30 dní</button>
-          <button className="btn" type="button" onClick={del}>Smazat inzerát</button>
-        </div>
-      </form>
+      ) : (
+        <form className="card p-4 space-y-3" method="POST" action="/api/inzeraty/edit">
+          <input className="input" name="id" placeholder="ID inzerátu (UUID)" required />
+          <input className="input" type="email" name="email" placeholder="E-mail použitý u inzerátu" required />
+          <button className="btn btn-primary" type="submit">Poslat odkaz pro úpravu</button>
+          <p className="text-xs text-neutral-500">Po odeslání uvidíte potvrzení na této stránce.</p>
+        </form>
+      )}
     </div>
   )
 }
