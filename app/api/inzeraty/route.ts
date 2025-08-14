@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { supabaseService } from '@/lib/supabaseServer'
 import { InzeratSchema } from '@/lib/schema'
 import { Resend } from 'resend'
@@ -14,7 +13,7 @@ const ALLOWED_IMAGE_TYPES = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,imag
   .split(',').map(s => s.trim()).filter(Boolean)
 
 // ---- helpers ----
-function json(data: any, init?: number | ResponseInit) {
+function json(data: any, init?: ResponseInit) {
   return NextResponse.json(data, init)
 }
 
@@ -70,7 +69,7 @@ export async function GET(req: NextRequest) {
   if (typeof cmax === 'number' && !Number.isNaN(cmax)) q = q.lte('cena_za_balik', cmax)
 
   if (sort === 'cena_asc') q = q.order('cena_za_balik', { ascending: true, nullsFirst: true })
-  else if (sort === 'cena_desc') q = q.order('cena_za_balik', { ascending: false /* nulls default (u DESC bývají první) */ })
+  else if (sort === 'cena_desc') q = q.order('cena_za_balik', { ascending: false })
   else q = q.order('created_at', { ascending: false })
 
   const { data, error, count } = await q.range(offset, offset + pageSize - 1)
@@ -121,13 +120,14 @@ export async function POST(req: NextRequest) {
   body.popis = cleanText(body.popis, 3000)
   body.sec = cleanText(body.sec, 20)
 
-  // validace (Zod schéma už má coerce na čísla atd.)
-  const parsed = InzeratSchema.safeParse(body)
+  // validace
+  const parsed = (InzeratSchema as any).safeParse(body)
   if (!parsed.success) {
     const fieldErrors: Record<string, string[]> = {}
     for (const e of parsed.error.issues) {
-      if (!fieldErrors[e.path[0] as string]) fieldErrors[e.path[0] as string] = []
-      fieldErrors[e.path[0] as string].push(e.message)
+      const key = String(e.path[0] ?? 'root')
+      if (!fieldErrors[key]) fieldErrors[key] = []
+      fieldErrors[key].push(e.message)
     }
     return json({ error: 'Neplatná data', fieldErrors }, { status: 400 })
   }
@@ -156,13 +156,9 @@ export async function POST(req: NextRequest) {
 
   for (let i = 0; i < Math.min(3, files.length); i++) {
     const f = files[i]
-    if (!ALLOWED_IMAGE_TYPES.includes(f.type)) {
-      continue // ignoruj neplatný typ
-    }
+    if (!ALLOWED_IMAGE_TYPES.includes(f.type)) continue
     const maxBytes = UPLOAD_MAX_MB * 1024 * 1024
-    if (f.size > maxBytes) {
-      continue // ignoruj příliš velké
-    }
+    if (f.size > maxBytes) continue
     const ext = f.name.split('.').pop() || 'bin'
     const path = `${created.id}/${crypto.randomUUID()}.${ext}`
     const arrayBuf = await f.arrayBuffer()
