@@ -2,10 +2,12 @@
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { InzeratSchema } from '@/lib/schema'
-import { useEffect, useMemo, useState } from 'react'
-import { KRAJE, OKRESY, ROKY_SKLIZNE } from '@/lib/cz'
+import { useEffect, useState } from 'react'
+import { KRAJE } from '@/lib/cz'
+import { track } from '@vercel/analytics'
 
 type Values = any
+type Opt = { id: number; nazev: string }
 
 export default function FormInzerat() {
   const [startedAt, setStartedAt] = useState<number>(0)
@@ -13,12 +15,31 @@ export default function FormInzerat() {
 
   const { register, handleSubmit, setError, formState: { errors, isSubmitting }, reset, control, watch, setValue } = useForm<Values>({
     resolver: zodResolver(InzeratSchema as any),
-    defaultValues: { typ_inzeratu: 'Nabídka', produkt: 'Seno', kraj: '' }
+    defaultValues: { typ_inzeratu: 'Nabídka', produkt: 'Seno', kraj_id: undefined, okres_id: undefined, rok_sklizne: '' }
   })
 
-  const kraj = watch('kraj') as keyof typeof OKRESY | ''
-  const okresOptions = useMemo(() => kraj ? (OKRESY[kraj] || []) : [], [kraj])
-  useEffect(() => { setValue('okres', '') }, [kraj, setValue])
+  const krajId = watch('kraj_id') as number | undefined
+
+  // kraje (rychle, fallback na konstanty – okresy můžeš doplnit později)
+  const [kraje, setKraje] = useState<Opt[]>([])
+  const [okresy, setOkresy] = useState<Opt[]>([])
+
+  useEffect(() => {
+    let ok = true
+    fetch('/api/ref/kraje').then(r=>r.json()).then(({items})=>{
+      if (!ok) return; setKraje(items?.length ? items : KRAJE.map((n,i)=>({ id:i+1, nazev:n })))
+    }).catch(()=> setKraje(KRAJE.map((n,i)=>({ id:i+1, nazev:n }))))
+    return ()=>{ ok=false }
+  }, [])
+
+  useEffect(() => {
+    let ok = true
+    if (!krajId) { setOkresy([]); setValue('okres_id', undefined as any); return }
+    fetch('/api/ref/okresy?kraj_id='+krajId).then(r=>r.json()).then(({items})=>{
+      if (!ok) return; setOkresy(items || []); setValue('okres_id', undefined as any)
+    }).catch(()=> setOkresy([]))
+    return ()=>{ ok=false }
+  }, [krajId, setValue])
 
   const onSubmit = async (values: Values) => {
     const fd = new FormData()
@@ -30,6 +51,7 @@ export default function FormInzerat() {
     if (files) Array.from(files).slice(0,3).forEach(f=> fd.append('fotky', f))
     fd.append('hp', '')
 
+    const started = Date.now()
     const res = await fetch('/api/inzeraty', { method: 'POST', body: fd, headers: { 'x-form-started-ms': String(startedAt) } })
     const data = await res.json().catch(()=>({} as any))
 
@@ -43,17 +65,20 @@ export default function FormInzerat() {
       } else {
         alert('Chyba: ' + (data?.error ?? res.statusText))
       }
+      track('inzerat_submit', { status: 'error', ms: Date.now()-started })
       return
     }
 
     if (data?.emailSent === false && data?.confirmUrl) {
       const err = data.emailError
-      const errMsg = typeof err === 'string' ? err : JSON.stringify(err)
-      alert('E-mail se nepodařilo odeslat (' + errMsg + '). Potvrďte prosím odkaz: ' + data.confirmUrl)
+      alert('E-mail se nepodařilo odeslat (' + (typeof err === 'string' ? err : JSON.stringify(err)) + '). Potvrďte prosím odkaz: ' + data.confirmUrl)
+      track('inzerat_submit', { status: 'email_failed', ms: Date.now()-started })
     } else if (data?.confirmUrl) {
       alert('E-mail není nastaven – potvrďte přes: ' + data.confirmUrl)
+      track('inzerat_submit', { status: 'email_missing', ms: Date.now()-started })
     } else {
       alert('Hotovo! Zkontrolujte e-mail a potvrďte zveřejnění.')
+      track('inzerat_submit', { status: 'ok', ms: Date.now()-started })
     }
     reset()
   }
@@ -91,20 +116,20 @@ export default function FormInzerat() {
       <div className="grid gap-4 md:grid-cols-3">
         <div>
           <label className="label">Kraj</label>
-          <Controller control={control} name="kraj" render={({ field }) => (
-            <select className={`select ${invalid('kraj') ? 'border-red-300' : ''}`} {...field}>
+          <Controller control={control} name="kraj_id" render={({ field }) => (
+            <select className={`select ${invalid('kraj_id') ? 'border-red-300' : ''}`} {...field}>
               <option value="">Vyberte kraj</option>
-              {KRAJE.map(k=> <option key={k} value={k}>{k}</option>)}
+              {kraje.map(k=> <option key={k.id} value={k.id}>{k.nazev}</option>)}
             </select>
           )} />
-          {err('kraj') && <p className="text-xs text-red-600">{err('kraj')}</p>}
+          {err('kraj_id') && <p className="text-xs text-red-600">{err('kraj_id')}</p>}
         </div>
         <div>
           <label className="label">Okres (podle kraje)</label>
-          <Controller control={control} name="okres" render={({ field }) => (
-            <select className="select" {...field} disabled={!kraj}>
-              <option value="">{kraj ? 'Vyberte okres' : 'Nejprve vyberte kraj'}</option>
-              {okresOptions.map(o=> <option key={o} value={o}>{o}</option>)}
+          <Controller control={control} name="okres_id" render={({ field }) => (
+            <select className="select" {...field} disabled={!krajId}>
+              <option value="">{krajId ? 'Vyberte okres' : 'Nejprve vyberte kraj'}</option>
+              {okresy.map(o=> <option key={o.id} value={o.id}>{o.nazev}</option>)}
             </select>
           )} />
         </div>
@@ -113,7 +138,7 @@ export default function FormInzerat() {
           <Controller control={control} name="rok_sklizne" render={({ field }) => (
             <select className="select" {...field}>
               <option value="">—</option>
-              {ROKY_SKLIZNE.map(r=> <option key={r} value={r}>{r}</option>)}
+              {['2022','2023','2024','2025'].map(r=> <option key={r} value={r}>{r}</option>)}
             </select>
           )} />
         </div>
